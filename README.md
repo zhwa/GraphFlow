@@ -9,7 +9,7 @@ GraphFlow is a **true parallel graph execution engine** that rivals LangGraph's 
 Get running in under 2 minutes:
 
 ```bash
-git clone <repository>
+git clone https://github.com/zhwa/GraphFlow.git
 cd GraphFlow
 python examples/01-test-and-examples.py  # Verify installation & run tests
 python examples/09-parallel-execution-demo.py  # See it in action
@@ -170,3 +170,4 @@ See [GraphFlow vs LangGraph](docs/08-comparison.md)
 4. **See it in action**: Run `python examples/09-parallel-execution-demo.py`
 
 **Transform your AI agents with true parallel execution!**
+
