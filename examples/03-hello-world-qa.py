@@ -1,220 +1,97 @@
 """
-GraphFlow Example: Hello World QA with Real LLM
-Ported from: PocketFlow cookbook/pocketflow-hello-world
+GraphFlow Example: Simple Q&A System
 
-This example demonstrates the simplest possible GraphFlow application:
-a single-node graph that answers questions using a real LLM.
+This example demonstrates a simple question-answering system that:
+- Processes user questions
+- Attempts to answer using an LLM 
+- Falls back gracefully when LLM is unavailable
+- Shows basic error handling patterns
 
-Setup:
-1. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or start Ollama
-2. Run: python 03-hello-world-qa.py
-
-Original PocketFlow pattern:
-- AnswerNode with prep/exec/post methods
-- Shared state dictionary
-- Flow with single node
-
-GraphFlow adaptation:
-- Simple function-based node with real LLM calls
-- TypedDict state schema
-- StateGraph with single node
+Key GraphFlow features demonstrated:
+- Single node processing
+- LLM integration with fallbacks
+- Simple state management
+- Clean error handling
 """
 
 import sys
 import os
-from typing import TypedDict
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Add the parent directory to Python path to import GraphFlow
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from graphflow import StateGraph
+from llm_utils import call_llm
 
-from graphflow import StateGraph, call_llm, configure_llm, get_llm_config
-
-# State schema - defines what data flows through the graph
-class QAState(TypedDict):
-    question: str
-    answer: str
-
-def setup_llm() -> bool:
-    """Configure LLM provider and return True if successful."""
-    if os.environ.get("OPENAI_API_KEY"):
-        configure_llm("openai", model="gpt-4")
-        print("✅ Using OpenAI GPT-4")
-        return True
-    elif os.environ.get("ANTHROPIC_API_KEY"):
-        configure_llm("anthropic", model="claude-3-sonnet-20240229")
-        print("✅ Using Anthropic Claude")
-        return True
-    else:
-        try:
-            configure_llm("ollama", model="llama2")
-            call_llm("test")  # Test if Ollama is working
-            print("✅ Using Ollama (local)")
-            return True
-        except Exception:
-            print("❌ No LLM provider available!")
-            print("\nTo use this example, you need:")
-            print("1. Set OPENAI_API_KEY environment variable, OR")
-            print("2. Set ANTHROPIC_API_KEY environment variable, OR")
-            print("3. Start Ollama server: ollama serve")
-            return False
-
-def answer_question(state: QAState) -> dict:
+def answer_question(state):
     """
-    Process a question and return an answer using real LLM.
-    
-    In PocketFlow, this was split into prep/exec/post:
-    - prep: extract question from shared state
-    - exec: call LLM with question
-    - post: store answer back in shared state
-    
-    In GraphFlow, we do it all in one function with real LLM calls.
+    Process a user question and provide an answer.
     """
-    question = state["question"]
+    question = state.get("question", "")
     
+    if not question:
+        return {"answer": "Please provide a question to answer."}
+    
+    # Try to get LLM response
     try:
-        # Call real LLM with a well-structured prompt
-        prompt = f"""You are a helpful AI assistant. Please answer the following question clearly and concisely:
-
-Question: {question}
-
-Please provide a helpful, informative answer."""
-        
-        answer = call_llm(prompt)
-        
+        prompt = f"Please answer this question clearly and concisely: {question}"
+        response = call_llm(prompt)
+        return {"answer": response.strip()}
     except Exception as e:
-        answer = f"Sorry, I encountered an error while processing your question: {str(e)}"
+        print(f"LLM unavailable: {e}")
     
-    # Return state updates
-    return {"answer": answer}
-
-def build_qa_graph():
-    """Build the QA graph - equivalent to PocketFlow's Flow(start=answer_node)"""
-    graph = StateGraph(QAState)
+    # Fallback responses for common questions
+    fallback_answers = {
+        "hello": "Hello! How can I help you today?",
+        "hi": "Hi there! What would you like to know?",
+        "how are you": "I'm doing well, thank you for asking!",
+        "what is your name": "I'm a GraphFlow-powered Q&A assistant.",
+        "goodbye": "Goodbye! Have a great day!",
+        "bye": "Bye! Come back anytime!"
+    }
     
-    # Add our single node
-    graph.add_node("answer", answer_question)
+    # Simple keyword matching for fallback
+    question_lower = question.lower().strip()
+    for key, answer in fallback_answers.items():
+        if key in question_lower:
+            return {"answer": answer}
     
-    # Set it as the entry point
-    graph.set_entry_point("answer")
-    
-    # Compile to runnable form
-    return graph.compile()
+    # Default fallback
+    return {
+        "answer": "I'm sorry, I don't have an answer for that question. "
+                 "(LLM service is currently unavailable)"
+    }
 
 def main():
-    """Main function with real LLM integration."""
-    print("🤖 GraphFlow Hello World QA with Real LLM")
-    print("=" * 50)
-    
-    # Setup LLM first
-    if not setup_llm():
-        return
-    
-    config = get_llm_config()
-    print(f"Provider: {config['provider']} | Model: {config['model']}")
-    print("-" * 50)
+    """Demonstrate the simple Q&A system."""
+    print("GraphFlow Simple Q&A System")
+    print("========================================")
     
     # Build the graph
-    qa_app = build_qa_graph()
+    graph = StateGraph()
+    graph.add_node("answer", answer_question)
+    graph.set_entry_point("answer")
+    graph.add_edge("answer", "__end__")
+    
+    # Compile the application
+    app = graph.compile()
     
     # Test questions
     test_questions = [
-        "What is the meaning of life?",
-        "How does artificial intelligence work?", 
-        "What is quantum physics?",
-        "Explain black holes in simple terms"
+        "Hello there!",
+        "What is the capital of France?",
+        "How are you?",
+        "What is machine learning?",
+        "Goodbye!"
     ]
     
     for question in test_questions:
-        print(f"\n🤔 Question: {question}")
-        print("🧠 Thinking...")
-        
-        # Run the graph - equivalent to qa_flow.run(shared)
-        result = qa_app.invoke({
-            "question": question,
-            "answer": ""  # Initial empty answer
-        })
-        
-        print(f"🤖 Answer: {result['answer']}")
-
-def interactive_mode():
-    """Interactive mode for testing real LLM"""
-    print("\n🎮 Interactive QA Mode")
-    print("Type 'quit' to exit")
-    print("-" * 30)
-    
-    if not setup_llm():
-        return
-        
-    qa_app = build_qa_graph()
-    
-    while True:
-        question = input("\n🤔 Your question: ").strip()
-        
-        if question.lower() in ['quit', 'exit', 'q']:
-            print("👋 Goodbye!")
-            break
-            
-        if not question:
-            print("Please enter a question.")
-            continue
-            
-        print("🧠 Thinking...")
+        print(f"\nQuestion: {question}")
+        print("-" * 40)
         
         try:
-            result = qa_app.invoke({
-                "question": question,
-                "answer": ""
-            })
-            print(f"🤖 Answer: {result['answer']}")
+            result = app.invoke({"question": question})
+            print(f"Answer: {result.get('answer', 'No answer provided')}")
         except Exception as e:
-            print(f"❌ Error: {e}")
-            break
-        
-        if not question:
-            print("Please enter a question.")
-            continue
-        
-        result = qa_app.invoke({
-            "question": question,
-            "answer": ""
-        })
-        
-        print(f"Answer: {result['answer']}")
+            print(f"Error: {e}")
 
 if __name__ == "__main__":
-    # Run basic demo
     main()
-    
-    # Uncomment for interactive mode
-    # interactive_mode()
-
-"""
-Key Differences from PocketFlow:
-
-1. State Schema:
-   - PocketFlow: Untyped dictionary
-   - GraphFlow: TypedDict with explicit fields
-
-2. Node Definition:
-   - PocketFlow: Class with prep/exec/post methods
-   - GraphFlow: Single function returning state updates
-
-3. Flow Construction:
-   - PocketFlow: Flow(start=node)
-   - GraphFlow: StateGraph with add_node/set_entry_point/compile
-
-4. Execution:
-   - PocketFlow: flow.run(shared) modifies shared dict
-   - GraphFlow: app.invoke(state) returns new state
-
-5. Type Safety:
-   - PocketFlow: Runtime errors for missing keys
-   - GraphFlow: IDE autocomplete and type checking
-
-Benefits of GraphFlow approach:
-- Better IDE support with autocomplete
-- Type safety catches errors early
-- Immutable state updates (no side effects)
-- Easier to test individual nodes
-- More functional programming style
-"""

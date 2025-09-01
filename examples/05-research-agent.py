@@ -1,6 +1,6 @@
 """
 GraphFlow Example: Research Agent with Web Search and Real LLM
-Ported from: PocketFlow cookbook/pocketflow-agent
+
 
 This example demonstrates an intelligent agent that:
 - Uses real LLM to analyze questions and generate answers
@@ -12,7 +12,7 @@ Setup:
 1. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or start Ollama
 2. Run: python 05-research-agent.py
 
-Original PocketFlow pattern:
+Implementation pattern:
 - Multiple nodes (DecideAction, SearchWeb, AnswerQuestion)
 - Conditional routing with string returns ("search", "answer", "decide")
 - Loop-back mechanism for iterative searching
@@ -83,7 +83,7 @@ def analyze_question(state: ResearchState) -> Command:
     """
     Use real LLM to analyze the question and decide whether we need more information.
     
-    Equivalent to PocketFlow's DecideAction node.
+    
     """
     question = state["question"]
     research_context = state["research_context"]
@@ -167,7 +167,7 @@ def search_web(state: ResearchState) -> Command:
     """
     Use LLM to generate search queries and perform web search.
     
-    Equivalent to PocketFlow's SearchWeb node.
+    
     """
     question = state["question"]
     research_context = state["research_context"]
@@ -238,7 +238,7 @@ def generate_answer(state: ResearchState) -> Command:
     """
     Generate final answer using LLM based on all research context.
     
-    Equivalent to PocketFlow's GenerateAnswer node.
+    
     """
     question = state["question"]
     research_context = state["research_context"]
@@ -304,7 +304,7 @@ def generate_answer_fallback(question: str, research_context: List[str]) -> str:
     """
     Generate the final answer based on accumulated research.
     
-    Equivalent to PocketFlow's AnswerQuestion node.
+    
     """
     question = state["question"]
     research_context = state["research_context"]

@@ -1,362 +1,460 @@
 """
-GraphFlow Examples
+GraphFlow Core Patterns
 
-This module contains examples demonstrating various GraphFlow patterns
-similar to LangGraph but built on PocketFlow.
+This module demonstrates essential GraphFlow patterns with parallel execution:
+- Simple workflows with state reducers
+- Parallel processing patterns
+- Fan-out and fan-in operations
+- Conditional routing with parallelism
+- Error handling in parallel contexts
+- Performance optimization techniques
+
+Each pattern showcases GraphFlow capabilities over traditional linear execution.
 """
 
 import sys
 import os
-from typing import TypedDict, List, Dict, Any
-import json
+import asyncio
+import time
+from typing import Dict, Any, List
 
 # Add the parent directory to Python path to import GraphFlow
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from graphflow import StateGraph, Send, Command, START, END
+from graphflow import StateGraph, Command, END, with_reducers
 
-# Example 1: Simple Chat Agent
-def example_simple_chat():
-    """A simple chat agent that processes messages."""
+# Pattern 1: Simple Parallel Processing
+async def pattern_simple_parallel():
+    """Basic parallel processing with multiple workers."""
+    print("🔄 Pattern 1: Simple Parallel Processing")
+    print("-" * 50)
     
-    class ChatState(TypedDict):
-        messages: List[str]
-        user_input: str
-        response: str
-    
-    def process_input(state: ChatState) -> Dict[str, Any]:
-        """Process user input and generate a response."""
-        user_msg = state.get("user_input", "")
-        response = f"You said: {user_msg}. How can I help you?"
-        
+    def create_work_state(tasks: List[str]):
         return {
-            "messages": state["messages"] + [user_msg, response],
-            "response": response
+            "tasks": tasks,
+            "results": [],
+            "metadata": {},
+            "completed": False
         }
     
-    # Build the graph
-    graph = StateGraph(ChatState)
-    graph.add_node("process", process_input)
-    graph.set_entry_point("process")
+    graph = StateGraph(
+        state_reducers=with_reducers(
+            results='extend',
+            metadata='merge'
+        )
+    )
     
+    def distribute_work(state: Dict[str, Any]) -> Command:
+        """Distribute work to parallel workers."""
+        print(f"📋 Distributing {len(state['tasks'])} tasks to workers...")
+        return Command(
+            update={"start_time": time.time()},
+            goto=["worker_fast", "worker_medium", "worker_slow"]
+        )
+    
+    async def worker_fast(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Fast worker processing subset of tasks."""
+        await asyncio.sleep(0.1)
+        tasks_subset = state["tasks"][:2]
+        results = [f"FAST-{task}" for task in tasks_subset]
+        return {
+            "results": results,
+            "metadata": {"fast_worker": {"processed": len(results), "speed": "fast"}}
+        }
+    
+    async def worker_medium(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Medium speed worker."""
+        await asyncio.sleep(0.2)
+        tasks_subset = state["tasks"][2:4]
+        results = [f"MEDIUM-{task}" for task in tasks_subset]
+        return {
+            "results": results,
+            "metadata": {"medium_worker": {"processed": len(results), "speed": "medium"}}
+        }
+    
+    async def worker_slow(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Slow but thorough worker."""
+        await asyncio.sleep(0.3)
+        tasks_subset = state["tasks"][4:]
+        results = [f"SLOW-{task}" for task in tasks_subset]
+        return {
+            "results": results,
+            "metadata": {"slow_worker": {"processed": len(results), "speed": "slow"}}
+        }
+    
+    def collect_results(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Collect and summarize results from all workers."""
+        processing_time = time.time() - state["start_time"]
+        return {
+            "completed": True,
+            "summary": {
+                "total_results": len(state["results"]),
+                "workers_used": len(state["metadata"]),
+                "processing_time": processing_time
+            }
+        }
+    
+    # Build graph
+    graph.add_node("distribute", distribute_work)
+    graph.add_node("worker_fast", worker_fast)
+    graph.add_node("worker_medium", worker_medium)
+    graph.add_node("worker_slow", worker_slow)
+    graph.add_node("collect", collect_results)
+    
+    # Fan-in pattern
+    graph.add_edge("worker_fast", "collect")
+    graph.add_edge("worker_medium", "collect")
+    graph.add_edge("worker_slow", "collect")
+    graph.set_entry_point("distribute")
+    
+    # Execute
     compiled = graph.compile()
+    tasks = ["task1", "task2", "task3", "task4", "task5", "task6"]
+    result = await compiled.ainvoke(create_work_state(tasks))
     
-    # Test the graph
-    result = compiled.invoke({
-        "messages": [],
-        "user_input": "Hello there!",
-        "response": ""
-    })
+    print(f"✅ Processed {result['summary']['total_results']} results")
+    print(f"⏱️  Time: {result['summary']['processing_time']:.3f}s")
+    print(f"👥 Workers: {result['summary']['workers_used']}")
     
-    print("Simple Chat Example:")
-    print(f"Messages: {result['messages']}")
-    print(f"Response: {result['response']}\n")
+    return result
 
-# Example 2: Conditional Routing
-def example_conditional_routing():
-    """Demonstrate conditional routing based on state."""
+# Pattern 2: Conditional Parallel Routing
+async def pattern_conditional_parallel():
+    """Conditional routing with parallel execution branches.""" 
+    print("\n🔀 Pattern 2: Conditional Parallel Routing")
+    print("-" * 50)
     
-    class RouterState(TypedDict):
-        message: str
-        route_taken: str
-        processed: bool
+    def create_decision_state(data_type: str, data: Any):
+        return {
+            "data_type": data_type,
+            "data": data,
+            "processing_results": [],
+            "decision_path": [],
+            "metadata": {}
+        }
     
-    def analyze_message(state: RouterState) -> Dict[str, Any]:
-        """Analyze the message and mark for routing."""
-        message = state["message"].lower()
+    graph = StateGraph(
+        state_reducers=with_reducers(
+            processing_results='extend',
+            decision_path='extend',
+            metadata='merge'
+        )
+    )
+    
+    def analyze_and_route(state: Dict[str, Any]) -> Command:
+        """Analyze data and route to appropriate parallel processors."""
+        data_type = state["data_type"]
         
-        if "urgent" in message:
-            route = "urgent_handler"
-        elif "question" in message or "?" in message:
-            route = "qa_handler"
+        if data_type == "image":
+            print(f"🖼️  Routing to image processing pipeline...")
+            return Command(
+                update={"decision_path": [f"routed_to_image_pipeline"]},
+                goto=["image_preprocessor", "image_analyzer", "image_enhancer"]
+            )
+        elif data_type == "text":
+            print(f"📝 Routing to text processing pipeline...")
+            return Command(
+                update={"decision_path": [f"routed_to_text_pipeline"]},
+                goto=["text_tokenizer", "text_analyzer", "text_summarizer"]
+            )
         else:
-            route = "general_handler"
-        
-        return {"route_taken": route}
+            print(f"🔧 Routing to general processing...")
+            return Command(
+                update={"decision_path": [f"routed_to_general"]},
+                goto="general_processor"
+            )
     
-    def route_message(state: RouterState) -> str:
-        """Route based on analysis."""
-        return state["route_taken"]
-    
-    def urgent_handler(state: RouterState) -> Dict[str, Any]:
-        """Handle urgent messages."""
+    # Image processing workers
+    async def image_preprocessor(state: Dict[str, Any]) -> Dict[str, Any]:
+        await asyncio.sleep(0.1)
         return {
-            "message": f"URGENT: {state['message']}",
-            "processed": True
+            "processing_results": [{"worker": "image_preprocessor", "result": "preprocessed_image"}],
+            "metadata": {"preprocessing_time": time.time()}
         }
     
-    def qa_handler(state: RouterState) -> Dict[str, Any]:
-        """Handle questions."""
+    async def image_analyzer(state: Dict[str, Any]) -> Dict[str, Any]:
+        await asyncio.sleep(0.2)
         return {
-            "message": f"Q&A: {state['message']}",
-            "processed": True
+            "processing_results": [{"worker": "image_analyzer", "result": "image_features_extracted"}],
+            "metadata": {"analysis_time": time.time()}
         }
     
-    def general_handler(state: RouterState) -> Dict[str, Any]:
-        """Handle general messages."""
+    async def image_enhancer(state: Dict[str, Any]) -> Dict[str, Any]:
+        await asyncio.sleep(0.15)
         return {
-            "message": f"General: {state['message']}",
-            "processed": True
+            "processing_results": [{"worker": "image_enhancer", "result": "enhanced_image"}],
+            "metadata": {"enhancement_time": time.time()}
         }
     
-    # Build the graph
-    graph = StateGraph(RouterState)
-    graph.add_node("analyze", analyze_message)
-    graph.add_node("urgent_handler", urgent_handler)
-    graph.add_node("qa_handler", qa_handler)
-    graph.add_node("general_handler", general_handler)
+    # Text processing workers
+    async def text_tokenizer(state: Dict[str, Any]) -> Dict[str, Any]:
+        await asyncio.sleep(0.05)
+        text = state["data"]
+        tokens = len(text.split()) if isinstance(text, str) else 0
+        return {
+            "processing_results": [{"worker": "text_tokenizer", "result": f"tokenized_{tokens}_words"}],
+            "metadata": {"tokenization_time": time.time()}
+        }
     
-    # Add conditional routing
-    graph.add_conditional_edges("analyze", route_message)
+    async def text_analyzer(state: Dict[str, Any]) -> Dict[str, Any]:
+        await asyncio.sleep(0.1)
+        return {
+            "processing_results": [{"worker": "text_analyzer", "result": "text_analysis_complete"}],
+            "metadata": {"text_analysis_time": time.time()}
+        }
+    
+    async def text_summarizer(state: Dict[str, Any]) -> Dict[str, Any]:
+        await asyncio.sleep(0.12)
+        return {
+            "processing_results": [{"worker": "text_summarizer", "result": "text_summary_generated"}],
+            "metadata": {"summarization_time": time.time()}
+        }
+    
+    def general_processor(state: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "processing_results": [{"worker": "general", "result": f"processed_{state['data_type']}"}],
+            "metadata": {"general_processing_time": time.time()}
+        }
+    
+    def finalize_processing(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Finalize processing results from parallel workers."""
+        return {
+            "decision_path": ["finalization_complete"],
+            "final_summary": {
+                "workers_executed": len(state["processing_results"]),
+                "data_type_processed": state["data_type"],
+                "total_steps": len(state["decision_path"])
+            }
+        }
+    
+    # Build graph
+    graph.add_node("analyze", analyze_and_route)
+    
+    # Image pipeline
+    graph.add_node("image_preprocessor", image_preprocessor)
+    graph.add_node("image_analyzer", image_analyzer)
+    graph.add_node("image_enhancer", image_enhancer)
+    
+    # Text pipeline
+    graph.add_node("text_tokenizer", text_tokenizer)
+    graph.add_node("text_analyzer", text_analyzer)
+    graph.add_node("text_summarizer", text_summarizer)
+    
+    # General processor
+    graph.add_node("general_processor", general_processor)
+    
+    # Finalization
+    graph.add_node("finalize", finalize_processing)
+    
+    # Fan-in edges
+    graph.add_edge("image_preprocessor", "finalize")
+    graph.add_edge("image_analyzer", "finalize")
+    graph.add_edge("image_enhancer", "finalize")
+    graph.add_edge("text_tokenizer", "finalize")
+    graph.add_edge("text_analyzer", "finalize")
+    graph.add_edge("text_summarizer", "finalize")
+    graph.add_edge("general_processor", "finalize")
     graph.set_entry_point("analyze")
     
     compiled = graph.compile()
     
-    # Test different message types
-    test_messages = [
-        "This is urgent! Please help!",
-        "What is the weather like today?",
-        "Hello, how are you doing?"
+    # Test different data types
+    test_cases = [
+        ("image", "sample_image.jpg"),
+        ("text", "This is a sample text for processing with multiple words and sentences."),
+        ("data", {"numbers": [1, 2, 3], "metadata": "test"})
     ]
     
-    print("Conditional Routing Example:")
-    for msg in test_messages:
-        result = compiled.invoke({
-            "message": msg,
-            "route_taken": "",
-            "processed": False
-        })
-        print(f"Input: {msg}")
-        print(f"Route: {result['route_taken']}")
-        print(f"Output: {result['message']}")
-        print(f"Processed: {result['processed']}\n")
+    for data_type, data in test_cases:
+        print(f"🧪 Testing {data_type} processing...")
+        result = await compiled.ainvoke(create_decision_state(data_type, data))
+        print(f"   📊 Workers: {result['final_summary']['workers_executed']}")
+        print(f"   🛤️  Path: {' -> '.join(result['decision_path'])}")
+    
+    return True
 
-# Example 3: Using Command for Complex Routing
-def example_command_routing():
-    """Demonstrate Command objects for combining updates and routing."""
+# Pattern 3: Pipeline with State Transformation
+async def pattern_pipeline_transformation():
+    """Data pipeline with parallel transformation stages."""
+    print("\n🔄 Pattern 3: Pipeline with State Transformation")
+    print("-" * 50)
     
-    class CommandState(TypedDict):
-        count: int
-        messages: List[str]
-        done: bool
+    def create_pipeline_state(raw_data: List[Dict]):
+        return {
+            "raw_data": raw_data,
+            "validated_data": [],
+            "enriched_data": [],
+            "processed_data": [],
+            "pipeline_metadata": {}
+        }
     
-    def counter_node(state: CommandState) -> Command:
-        """Increment counter and decide next action."""
-        new_count = state["count"] + 1
+    graph = StateGraph(
+        state_reducers=with_reducers(
+            validated_data='extend',
+            enriched_data='extend', 
+            processed_data='extend',
+            pipeline_metadata='merge'
+        )
+    )
+    
+    def start_pipeline(state: Dict[str, Any]) -> Command:
+        """Start the data processing pipeline."""
+        print(f"🚀 Starting pipeline with {len(state['raw_data'])} records...")
+        return Command(
+            update={"pipeline_metadata": {"start_time": time.time()}},
+            goto=["validator", "enricher", "processor"]  # Parallel processing stages
+        )
+    
+    async def validator(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate data records in parallel."""
+        await asyncio.sleep(0.1)
+        valid_records = []
         
-        if new_count < 3:
-            return Command(
-                update={
-                    "count": new_count,
-                    "messages": state["messages"] + [f"Count: {new_count}"]
-                },
-                goto="counter"  # Loop back
-            )
-        else:
-            return Command(
-                update={
-                    "count": new_count,
-                    "messages": state["messages"] + [f"Final count: {new_count}"],
-                    "done": True
-                },
-                goto=END
-            )
+        for record in state["raw_data"]:
+            if "id" in record and "value" in record:
+                valid_records.append({**record, "validated": True})
+        
+        return {
+            "validated_data": valid_records,
+            "pipeline_metadata": {
+                "validation_time": time.time(),
+                "validation_count": len(valid_records)
+            }
+        }
     
-    # Build the graph
-    graph = StateGraph(CommandState)
-    graph.add_node("counter", counter_node)
-    graph.set_entry_point("counter")
+    async def enricher(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Enrich data with additional information."""
+        await asyncio.sleep(0.15)
+        enriched_records = []
+        
+        for record in state["raw_data"]:
+            enriched_record = {
+                **record,
+                "enriched": True,
+                "enrichment_timestamp": time.time(),
+                "enriched_value": record.get("value", 0) * 2
+            }
+            enriched_records.append(enriched_record)
+        
+        return {
+            "enriched_data": enriched_records,
+            "pipeline_metadata": {
+                "enrichment_time": time.time(),
+                "enrichment_count": len(enriched_records)
+            }
+        }
+    
+    async def processor(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Process data with business logic."""
+        await asyncio.sleep(0.12)
+        processed_records = []
+        
+        for record in state["raw_data"]:
+            processed_record = {
+                "id": record.get("id"),
+                "processed_value": record.get("value", 0) ** 2,
+                "processed": True,
+                "processing_timestamp": time.time()
+            }
+            processed_records.append(processed_record)
+        
+        return {
+            "processed_data": processed_records,
+            "pipeline_metadata": {
+                "processing_time": time.time(),
+                "processing_count": len(processed_records)
+            }
+        }
+    
+    def merge_pipeline_results(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge results from all pipeline stages."""
+        total_time = time.time() - state["pipeline_metadata"]["start_time"]
+        
+        return {
+            "pipeline_complete": True,
+            "final_summary": {
+                "input_records": len(state["raw_data"]),
+                "validated_records": len(state["validated_data"]),
+                "enriched_records": len(state["enriched_data"]),
+                "processed_records": len(state["processed_data"]),
+                "total_pipeline_time": total_time,
+                "stages_completed": 3
+            }
+        }
+    
+    # Build graph
+    graph.add_node("start", start_pipeline)
+    graph.add_node("validator", validator)
+    graph.add_node("enricher", enricher)
+    graph.add_node("processor", processor)
+    graph.add_node("merge", merge_pipeline_results)
+    
+    # Fan-in pattern
+    graph.add_edge("validator", "merge")
+    graph.add_edge("enricher", "merge")
+    graph.add_edge("processor", "merge")
+    graph.set_entry_point("start")
     
     compiled = graph.compile()
     
-    # Test the command routing
-    result = compiled.invoke({
-        "count": 0,
-        "messages": [],
-        "done": False
-    })
-    
-    print("Command Routing Example:")
-    print(f"Final count: {result['count']}")
-    print(f"Messages: {result['messages']}")
-    print(f"Done: {result['done']}\n")
-
-# Example 4: Map-Reduce with Send
-def example_map_reduce():
-    """Demonstrate map-reduce pattern using Send objects."""
-    
-    class MapReduceState(TypedDict):
-        items: List[str]
-        processed_items: List[str]
-        final_result: str
-    
-    def map_items(state: MapReduceState) -> List[Send]:
-        """Map items to individual processing nodes."""
-        sends = []
-        for item in state["items"]:
-            sends.append(Send("process_item", {"item": item}))
-        return sends
-    
-    def process_item(state: Dict[str, Any]) -> Dict[str, Any]:
-        """Process a single item."""
-        item = state["item"]
-        processed = f"Processed: {item.upper()}"
-        return {"processed_item": processed}
-    
-    def reduce_results(state: MapReduceState) -> Dict[str, Any]:
-        """Combine all processed items."""
-        final = " | ".join(state["processed_items"])
-        return {"final_result": final}
-    
-    # This is a simplified version - full map-reduce would require
-    # more sophisticated parallel execution handling
-    print("Map-Reduce Example (Simplified):")
-    
-    # Simulate the map-reduce process
-    items = ["apple", "banana", "cherry"]
-    processed_items = []
-    
-    for item in items:
-        result = process_item({"item": item})
-        processed_items.append(result["processed_item"])
-    
-    final_result = reduce_results({
-        "items": items,
-        "processed_items": processed_items,
-        "final_result": ""
-    })
-    
-    print(f"Items: {items}")
-    print(f"Processed: {processed_items}")
-    print(f"Final: {final_result['final_result']}\n")
-
-# Example 5: Agent-like Workflow
-def example_agent_workflow():
-    """Demonstrate an agent-like workflow with tool calling."""
-    
-    class AgentState(TypedDict):
-        user_query: str
-        thoughts: List[str]
-        actions: List[str]
-        final_answer: str
-        max_iterations: int
-        current_iteration: int
-    
-    def think(state: AgentState) -> Dict[str, Any]:
-        """Agent thinking step."""
-        query = state["user_query"]
-        iteration = state["current_iteration"]
-        
-        if "weather" in query.lower():
-            thought = f"Iteration {iteration}: User asking about weather, need to call weather tool"
-            action = "call_weather_tool"
-        elif "time" in query.lower():
-            thought = f"Iteration {iteration}: User asking about time, need to get current time"
-            action = "get_time"
-        else:
-            thought = f"Iteration {iteration}: General query, can answer directly"
-            action = "answer_directly"
-        
-        return {
-            "thoughts": state["thoughts"] + [thought],
-            "actions": state["actions"] + [action],
-            "current_iteration": iteration + 1
-        }
-    
-    def should_continue(state: AgentState) -> str:
-        """Decide whether to continue or finish."""
-        if state["current_iteration"] >= state["max_iterations"]:
-            return "finish"
-        
-        last_action = state["actions"][-1] if state["actions"] else ""
-        
-        if last_action == "answer_directly":
-            return "finish"
-        else:
-            return "execute_action"
-    
-    def execute_action(state: AgentState) -> Dict[str, Any]:
-        """Execute the planned action."""
-        last_action = state["actions"][-1] if state["actions"] else ""
-        
-        if last_action == "call_weather_tool":
-            result = "Weather tool result: Sunny, 75°F"
-        elif last_action == "get_time":
-            result = "Current time: 2:30 PM"
-        else:
-            result = "Action executed"
-        
-        return {
-            "thoughts": state["thoughts"] + [f"Action result: {result}"]
-        }
-    
-    def finish(state: AgentState) -> Dict[str, Any]:
-        """Generate final answer."""
-        query = state["user_query"]
-        thoughts = state["thoughts"]
-        
-        # Simple answer generation based on thoughts
-        if any("weather" in t.lower() for t in thoughts):
-            answer = "The weather is sunny and 75°F."
-        elif any("time" in t.lower() for t in thoughts):
-            answer = "The current time is 2:30 PM."
-        else:
-            answer = f"I've thought about your query: {query}"
-        
-        return {"final_answer": answer}
-    
-    # Build the agent graph
-    graph = StateGraph(AgentState)
-    graph.add_node("think", think)
-    graph.add_node("execute_action", execute_action)
-    graph.add_node("finish", finish)
-    
-    # Add routing
-    graph.add_conditional_edges("think", should_continue)
-    graph.add_edge("execute_action", "think")  # Loop back to think
-    graph.set_entry_point("think")
-    
-    compiled = graph.compile()
-    
-    # Test the agent
-    test_queries = [
-        "What's the weather like?",
-        "What time is it?",
-        "Tell me a joke"
+    # Test data
+    test_data = [
+        {"id": 1, "value": 10, "type": "A"},
+        {"id": 2, "value": 20, "type": "B"},
+        {"id": 3, "value": 30, "type": "A"},
+        {"id": 4, "value": 40, "type": "C"}
     ]
     
-    print("Agent Workflow Example:")
-    for query in test_queries:
-        result = compiled.invoke({
-            "user_query": query,
-            "thoughts": [],
-            "actions": [],
-            "final_answer": "",
-            "max_iterations": 3,
-            "current_iteration": 0
-        })
-        
-        print(f"Query: {query}")
-        print(f"Thoughts: {result['thoughts']}")
-        print(f"Actions: {result['actions']}")
-        print(f"Answer: {result['final_answer']}\n")
+    result = await compiled.ainvoke(create_pipeline_state(test_data))
+    
+    print(f"✅ Pipeline completed!")
+    print(f"📊 Summary: {result['final_summary']}")
+    print(f"⏱️  Total time: {result['final_summary']['total_pipeline_time']:.3f}s")
+    
+    return result
 
-def run_all_examples():
-    """Run all the examples."""
+async def run_core_patterns():
+    """Run all core GraphFlow patterns."""
+    print("GraphFlow Core Patterns Demonstration")
     print("=" * 60)
-    print("GraphFlow Examples - LangGraph-like Agent Framework")
-    print("=" * 60)
-    print()
     
-    example_simple_chat()
-    example_conditional_routing()
-    example_command_routing()
-    example_map_reduce()
-    example_agent_workflow()
+    patterns = [
+        ("Simple Parallel Processing", pattern_simple_parallel),
+        ("Conditional Parallel Routing", pattern_conditional_parallel),
+        ("Pipeline with State Transformation", pattern_pipeline_transformation)
+    ]
     
-    print("=" * 60)
-    print("All examples completed!")
-    print("=" * 60)
+    results = []
+    for name, pattern_func in patterns:
+        try:
+            print(f"\n🎯 Running: {name}")
+            result = await pattern_func()
+            results.append(True)
+            print(f"✅ {name} completed successfully!")
+        except Exception as e:
+            print(f"❌ {name} failed: {e}")
+            results.append(False)
+    
+    # Summary
+    passed = sum(results)
+    total = len(results)
+    
+    print(f"\n📊 Core Patterns Summary:")
+    print(f"   ✅ Passed: {passed}/{total}")
+    print(f"   ❌ Failed: {total-passed}/{total}")
+    
+    if passed == total:
+        print(f"\n🎉 All core patterns executed successfully!")
+        print("🚀 GraphFlow parallel execution is working perfectly!")
+    else:
+        print(f"\n⚠️  Some patterns failed. Check the output above.")
+    
+    print(f"\n🎯 Key Patterns Demonstrated:")
+    print("   • Fan-out: One node triggers multiple parallel workers")
+    print("   • Fan-in: Multiple workers converge to single result")
+    print("   • State reducers: Automatic concurrent state merging")
+    print("   • Conditional routing: Dynamic parallel execution paths")
+    print("   • Pipeline processing: Multi-stage parallel data transformation")
 
 if __name__ == "__main__":
-    run_all_examples()
+    asyncio.run(run_core_patterns())

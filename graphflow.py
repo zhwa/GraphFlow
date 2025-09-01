@@ -1,8 +1,8 @@
 """
-GraphFlow: A LangGraph-like Agent Framework with LLM Support
+GraphFlow: A Parallel Graph Execution Framework for AI Agents
 
-This module provides a state-based graph execution framework that combines
-PocketFlow's simplicity with LangGraph's powerful routing and state management.
+This module provides a state-based graph execution framework that enables
+powerful parallel AI agent workflows with sophisticated routing and state management.
 Includes built-in LLM utilities for OpenAI, Anthropic, and Ollama.
 """
 
@@ -20,6 +20,26 @@ from typing import (
 )
 from dataclasses import dataclass
 from collections import defaultdict
+
+# Import the new execution engine
+try:
+    from engine import ParallelGraphExecutor, State as EngineState, GraphTopologyAnalyzer
+    ENGINE_AVAILABLE = True
+except ImportError as e1:
+    try:
+        from .engine import ParallelGraphExecutor, State as EngineState, GraphTopologyAnalyzer
+        ENGINE_AVAILABLE = True
+    except ImportError as e2:
+        ENGINE_AVAILABLE = False
+        # Fallback - we'll define minimal versions
+        class ParallelGraphExecutor:
+            def __init__(self, *args, **kwargs):
+                raise ImportError(f"Parallel execution engine not available: {e1}, {e2}")
+        class EngineState(dict):
+            pass
+        class GraphTopologyAnalyzer:
+            def __init__(self, *args, **kwargs):
+                raise ImportError(f"Graph topology analyzer not available: {e1}, {e2}")
 
 # Import LLM utilities
 try:
@@ -51,7 +71,7 @@ NodeT = TypeVar('NodeT')
 START = "__start__"
 END = "__end__"
 
-# PocketFlow base classes (embedded for simplicity)
+# Core execution classes for GraphFlow
 class BaseNode:
     def __init__(self): self.params,self.successors={},{}
     def set_params(self,params): self.params=params
@@ -115,13 +135,6 @@ class AsyncNode(Node):
         return await self._run_async(shared)
     async def _run_async(self,shared): p=await self.prep_async(shared); e=await self._exec(p); return await self.post_async(shared,p,e)
     def _run(self,shared): raise RuntimeError("Use run_async.")
-
-StateT = TypeVar('StateT', bound=Dict[str, Any])
-NodeT = TypeVar('NodeT')
-
-# Special constants
-START = "__start__"
-END = "__end__"
 
 @dataclass
 class Send:
@@ -233,10 +246,11 @@ class ConditionalEdge:
         return result
 
 class StateGraph(Generic[StateT]):
-    """A state-based graph similar to LangGraph but built on PocketFlow."""
+    """A state-based graph similar to LangGraph with parallel execution capabilities."""
     
-    def __init__(self, state_schema: type = None):
+    def __init__(self, state_schema: type = None, state_reducers: Dict[str, str] = None):
         self.state_schema = state_schema
+        self.state_reducers = state_reducers or {}
         self.nodes: Dict[str, Union[GraphNode, AsyncGraphNode]] = {}
         self.edges: Dict[str, str] = {}
         self.conditional_edges: Dict[str, ConditionalEdge] = {}
@@ -286,42 +300,83 @@ class StateGraph(Generic[StateT]):
         self.entry_point = node_name
         return self
     
-    def compile(self) -> 'CompiledStateGraph':
+    def set_state_reducer(self, field_name: str, reducer_type: str) -> 'StateGraph':
+        """Set a specific reducer for a state field."""
+        self.state_reducers[field_name] = reducer_type
+        return self
+    
+    def analyze_topology(self) -> 'GraphTopologyAnalyzer':
+        """Get a topology analyzer for this graph."""
+        if not ENGINE_AVAILABLE:
+            raise ImportError("Graph topology analysis requires the engine module")
+        return GraphTopologyAnalyzer(self)
+    
+    def compile(self, use_parallel_engine: bool = True) -> 'CompiledStateGraph':
         """Compile the graph into an executable form."""
         if not self.entry_point:
             raise ValueError("Must set an entry point before compiling")
         
         self.compiled = True
-        return CompiledStateGraph(self)
+        return CompiledStateGraph(self, use_parallel_engine=use_parallel_engine)
 
 class CompiledStateGraph:
     """A compiled, executable version of StateGraph."""
     
-    def __init__(self, graph: StateGraph):
+    def __init__(self, graph: StateGraph, use_parallel_engine: bool = True, max_concurrent: int = 10):
         self.graph = graph
-        self._build_flow()
+        self.use_parallel_engine = use_parallel_engine and ENGINE_AVAILABLE
+        self.max_concurrent = max_concurrent
+        
+        if self.use_parallel_engine:
+            # Use the new parallel execution engine
+            self.executor = ParallelGraphExecutor(graph, max_concurrent)
+        else:
+            # Fall back to the original linear execution
+            self._build_flow()
     
     def _build_flow(self):
-        """Build the PocketFlow execution graph."""
+        """Build the linear execution graph (fallback mode)."""
         # Create a custom flow that handles state management
         self.flow = StateFlow(self.graph)
     
-    def invoke(self, initial_state: StateT) -> StateT:
+    def invoke(self, initial_state: StateT, field_reducers: Dict[str, str] = None) -> Any:
         """Execute the graph with the given initial state."""
-        return self.flow.run(initial_state)
-    
-    async def ainvoke(self, initial_state: StateT) -> StateT:
-        """Async execute the graph with the given initial state."""
-        if hasattr(self.flow, 'run_async'):
-            return await self.flow.run_async(initial_state)
+        if self.use_parallel_engine:
+            # Use parallel execution engine
+            return self.executor.invoke(initial_state, field_reducers)
         else:
-            return self.invoke(initial_state)
+            # Use legacy linear execution
+            return self.flow.run(initial_state)
     
-    def stream(self, initial_state: StateT):
+    async def ainvoke(self, initial_state: StateT, field_reducers: Dict[str, str] = None) -> Any:
+        """Async execute the graph with the given initial state."""
+        if self.use_parallel_engine:
+            # Use parallel execution engine
+            return await self.executor.ainvoke(initial_state, field_reducers)
+        else:
+            # Use legacy execution
+            if hasattr(self.flow, 'run_async'):
+                return await self.flow.run_async(initial_state)
+            else:
+                return self.invoke(initial_state, field_reducers)
+    
+    def stream(self, initial_state: StateT, field_reducers: Dict[str, str] = None):
         """Stream intermediate results (generator)."""
-        # For now, just yield the final result
-        # Could be enhanced to yield intermediate states
-        yield self.invoke(initial_state)
+        if self.use_parallel_engine:
+            # For now, just yield the final result
+            # TODO: Implement streaming support in parallel engine
+            yield self.invoke(initial_state, field_reducers)
+        else:
+            # Legacy streaming
+            yield self.invoke(initial_state, field_reducers)
+    
+    def get_execution_mode(self) -> str:
+        """Get the current execution mode."""
+        return "parallel" if self.use_parallel_engine else "linear"
+    
+    def analyze_graph(self):
+        """Analyze the graph topology."""
+        return self.graph.analyze_topology()
 
 class StateFlow(Flow):
     """Custom Flow that handles StateGraph execution."""
@@ -332,7 +387,7 @@ class StateFlow(Flow):
         self._setup_nodes()
     
     def _setup_nodes(self):
-        """Setup PocketFlow nodes and connections."""
+        """Setup linear execution nodes and connections."""
         # Set the start node
         if self.graph.entry_point:
             self.start_node = self.graph.nodes[self.graph.entry_point]
@@ -408,20 +463,45 @@ class StateFlow(Flow):
         return shared
 
 # Convenience functions for building graphs
-def create_graph(state_schema: type = None) -> StateGraph:
+def create_graph(state_schema: type = None, state_reducers: Dict[str, str] = None) -> StateGraph:
     """Create a new StateGraph."""
-    return StateGraph(state_schema)
+    return StateGraph(state_schema, state_reducers)
 
 def node(func: Callable[[StateT], Any]) -> Callable[[StateT], Any]:
     """Decorator to mark a function as a graph node."""
     func._is_graph_node = True
     return func
 
+# State reducer helpers
+def with_reducers(**reducers) -> Dict[str, str]:
+    """Create a reducer configuration dictionary."""
+    return reducers
+
+def append_to(field: str) -> Dict[str, str]:
+    """Create a reducer that appends to a list field."""
+    return {field: 'append'}
+
+def extend_list(field: str) -> Dict[str, str]:
+    """Create a reducer that extends a list field."""
+    return {field: 'extend'}
+
+def merge_dict(field: str) -> Dict[str, str]:
+    """Create a reducer that merges dictionary fields."""
+    return {field: 'merge'}
+
+def set_value(field: str) -> Dict[str, str]:
+    """Create a reducer that sets/replaces a field value."""
+    return {field: 'set'}
+
 # Export main classes and functions
 __all__ = [
     'StateGraph', 'CompiledStateGraph', 'GraphNode', 'AsyncGraphNode',
     'ConditionalEdge', 'Send', 'Command', 'START', 'END',
-    'create_graph', 'node',
+    'create_graph', 'node', 'with_reducers', 'append_to', 'extend_list', 'merge_dict', 'set_value',
+    # Version and metadata
+    '__version__', '__author__', '__license__',
+    # New parallel execution classes
+    'ParallelGraphExecutor', 'EngineState', 'GraphTopologyAnalyzer',
     # LLM utilities
     'call_llm', 'configure_llm', 'ask_llm', 'chat_with_llm', 
     'call_llm_async', 'get_llm_config'

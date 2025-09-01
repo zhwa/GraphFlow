@@ -1,33 +1,35 @@
 """
 GraphFlow Quick Start Example
 
-This file demonstrates the basic usage of GraphFlow.
-Run this file to see GraphFlow in action.
+This file demonstrates GraphFlow parallel execution with simple patterns.
+Run this file to see GraphFlow in action with state reducers and parallel processing.
 """
 
 import sys
 import os
-from typing import TypedDict, List
 
 # Add the parent directory to Python path to import GraphFlow
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from graphflow import StateGraph, Command, END
+from graphflow import StateGraph, Command, END, with_reducers
 
-# Define your state schema
-class ChatState(TypedDict):
-    messages: List[str]
-    user_input: str
-    turn_count: int
+def create_chat_state(user_input=""):
+    """Create initial chat state - simple dictionary."""
+    return {
+        "messages": [],
+        "user_input": user_input,
+        "turn_count": 0,
+        "responses": []
+    }
 
-def greet_user(state: ChatState) -> dict:
+def greet_user(state):
     """Initial greeting node."""
     return {
         "messages": state["messages"] + ["Hello! How can I help you today?"],
         "turn_count": state["turn_count"] + 1
     }
 
-def process_input(state: ChatState) -> Command:
+def process_input(state):
     """Process user input and decide next action."""
     user_msg = state["user_input"].lower()
     
@@ -51,7 +53,7 @@ def process_input(state: ChatState) -> Command:
             goto="ask_more"
         )
 
-def ask_more(state: ChatState) -> dict:
+def ask_more(state):
     """Ask for more input."""
     return {
         "messages": state["messages"] + ["What else would you like to talk about?"]
@@ -62,8 +64,14 @@ def main():
     print("GraphFlow Quick Start Example")
     print("=" * 40)
     
-    # Build the graph
-    graph = StateGraph(ChatState)
+    # Build the graph with state reducers for managing lists
+    graph = StateGraph(
+        state_reducers=with_reducers(
+            messages='extend',  # Automatically merge message lists
+            responses='extend'  # Collect all responses
+        )
+    )
+    
     graph.add_node("greet", greet_user)
     graph.add_node("process", process_input)
     graph.add_node("ask_more", ask_more)
@@ -79,7 +87,7 @@ def main():
     # Test with different inputs
     test_inputs = [
         "Hello there!",
-        "What's the weather like?",
+        "What's the weather like?", 
         "Tell me a joke",
         "Goodbye!"
     ]
@@ -88,11 +96,7 @@ def main():
         print(f"\nUser Input: {user_input}")
         print("-" * 30)
         
-        result = compiled_graph.invoke({
-            "messages": [],
-            "user_input": user_input,
-            "turn_count": 0
-        })
+        result = compiled_graph.invoke(create_chat_state(user_input))
         
         print("Conversation:")
         for i, message in enumerate(result["messages"], 1):

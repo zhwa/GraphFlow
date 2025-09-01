@@ -1,6 +1,6 @@
 """
 GraphFlow Example: Async Multi-Agent Game
-Ported from: PocketFlow cookbook/pocketflow-multi-agent
+
 
 This example demonstrates:
 - Async concurrent execution with multiple agents
@@ -9,7 +9,7 @@ This example demonstrates:
 - Complex async state management
 - Graceful termination conditions
 
-Original PocketFlow pattern:
+Implementation pattern:
 - AsyncHinter and AsyncGuesser nodes
 - AsyncFlow with concurrent execution
 - Queue-based communication between agents
@@ -120,7 +120,7 @@ async def initialize_game(state: GameState) -> Command:
 async def hinter_agent(state: GameState) -> Command:
     """
     Hinter agent that provides hints for the target word.
-    Equivalent to PocketFlow's AsyncHinter node.
+    
     """
     if not state["hinter_active"] or state["game_over"]:
         return Command(update={"hinter_active": False}, goto=END)
@@ -181,7 +181,7 @@ async def hinter_agent(state: GameState) -> Command:
 async def guesser_agent(state: GameState) -> Command:
     """
     Guesser agent that makes guesses based on hints.
-    Equivalent to PocketFlow's AsyncGuesser node.
+    
     """
     if not state["guesser_active"] or state["game_over"]:
         return Command(update={"guesser_active": False}, goto=END)

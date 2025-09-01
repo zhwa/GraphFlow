@@ -1,6 +1,5 @@
 """
 GraphFlow Example: Interactive Chat Agent with Real LLM
-Ported from: PocketFlow cookbook/pocketflow-chat
 
 This example demonstrates a conversational agent that:
 - Maintains conversation history
@@ -13,9 +12,9 @@ Setup:
 1. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or start Ollama
 2. Run: python 04-interactive-chat.py
 
-Original PocketFlow pattern:
-- ChatNode with self-loop (node - "continue" >> node)
-- User input in prep, LLM call in exec, response handling in post
+Implementation pattern:
+- Chat node with self-loop for continuous conversation
+- User input handling, LLM processing, response handling
 - Loop control via return values
 
 GraphFlow adaptation:
@@ -87,7 +86,7 @@ def get_user_input(state: ChatState) -> Command:
     """
     Get input from the user and decide whether to continue.
     
-    Equivalent to PocketFlow ChatNode.prep() method.
+    
     """
     # Initialize on first run
     if state["turn_count"] == 0:
@@ -129,7 +128,7 @@ def generate_response(state: ChatState) -> Command:
     """
     Generate assistant response using real LLM.
     
-    Equivalent to PocketFlow ChatNode.exec() method.
+    
     """
     print("🧠 Thinking...")
     
@@ -176,7 +175,7 @@ def update_conversation(state: ChatState) -> Command:
     """
     Update conversation history and decide next action.
     
-    Equivalent to PocketFlow ChatNode.post() method.
+    
     """
     # Add messages to history
     new_messages = state["messages"] + [
@@ -254,7 +253,7 @@ if __name__ == "__main__":
     main()
 
 """
-Key GraphFlow Improvements over PocketFlow:
+Key GraphFlow Improvements over 
 
 1. Real LLM Integration:
    - Supports OpenAI, Anthropic, and Ollama

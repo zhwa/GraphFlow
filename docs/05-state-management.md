@@ -1,53 +1,501 @@
-# Chapter 5: State Management
-**Mastering TypedDict schemas and state flow patterns**
+# State Management: Understanding Reducers and Parallel Merging
 
-State is the heart of GraphFlow - every node processes state, every decision is based on state, and every output is state. This chapter will teach you how to design effective state schemas and manage state flow like a pro.
+*Master state management in parallel workflows with GraphFlow's powerful reducer system*
 
-## Understanding State in GraphFlow
+## 🎯 What is State Management?
 
-### What is State?
+In parallel graph execution, multiple nodes run simultaneously and may update the same state fields. **State management** is how we safely combine these concurrent updates without conflicts or data loss.
 
-In GraphFlow, state is a Python dictionary that flows through your graph. Each node receives the current state and can update it. Think of state as the "memory" of your workflow - it holds all the data your nodes need to make decisions and perform work.
+Think of it like multiple people editing the same document - you need rules for merging their changes!
+
+## 🧠 Core Concepts
+
+### The Problem: Concurrent State Updates
 
 ```python
-# Example state flowing through a workflow
-initial_state = {
-    "user_input": "Hello, how are you?",
-    "conversation_history": [],
-    "user_context": {},
-    "current_step": "analyze_input"
+# ❌ This creates a problem in parallel execution:
+# Node A updates: {'results': ['A_result']}
+# Node B updates: {'results': ['B_result']}  
+# Which one wins? We might lose data!
+
+# ✅ Solution: Use reducers to merge updates safely
+graph = StateGraph(state_reducers={'results': 'extend'})
+# Now both results are preserved: {'results': ['A_result', 'B_result']}
+```
+
+### What are Reducers?
+
+**Reducers** are merge strategies that define how to combine multiple updates to the same state field. They're the "rules" for resolving conflicts when parallel nodes update the same data.
+
+## 🔧 Built-in Reducer Types
+
+### 1. `'extend'` - Combine Lists
+**Use when:** Collecting results from parallel processors
+
+```python
+graph = StateGraph(state_reducers={'results': 'extend'})
+
+# Node A returns: {'results': ['result_A']}
+# Node B returns: {'results': ['result_B']} 
+# Node C returns: {'results': ['result_C']}
+
+# Final state: {'results': ['result_A', 'result_B', 'result_C']}
+```
+
+**Perfect for:**
+- Collecting parallel processing results
+- Building lists of completed tasks
+- Accumulating log entries
+
+### 2. `'append'` - Add Single Values
+**Use when:** Each node contributes one item
+
+```python
+graph = StateGraph(state_reducers={'items': 'append'})
+
+# Node A returns: {'items': 'item_A'}
+# Node B returns: {'items': 'item_B'}
+
+# Final state: {'items': ['item_A', 'item_B']}
+```
+
+**Perfect for:**
+- Single value contributions
+- Building collections from individual results
+- Event logging
+
+### 3. `'merge'` - Combine Dictionaries
+**Use when:** Each node updates different parts of a complex object
+
+```python
+graph = StateGraph(state_reducers={'analysis': 'merge'})
+
+# Node A returns: {'analysis': {'sentiment': 'positive'}}
+# Node B returns: {'analysis': {'entities': ['Person', 'Place']}}
+# Node C returns: {'analysis': {'keywords': ['important', 'data']}}
+
+# Final state: {
+#   'analysis': {
+#     'sentiment': 'positive',
+#     'entities': ['Person', 'Place'], 
+#     'keywords': ['important', 'data']
+#   }
+# }
+```
+
+**Perfect for:**
+- Complex analysis results
+- Configuration objects
+- Metadata collection
+
+### 4. `'set'` - Last Write Wins
+**Use when:** Only the final value matters
+
+```python
+graph = StateGraph(state_reducers={'status': 'set'})
+
+# Node A returns: {'status': 'processing'}
+# Node B returns: {'status': 'analyzing'}
+# Node C returns: {'status': 'completed'}
+
+# Final state: {'status': 'completed'}  # Last update wins
+```
+
+**Perfect for:**
+- Status updates
+- Configuration overrides
+- Final result selection
+
+## 🛠️ Custom Reducers
+
+For complex merging logic, create custom reducer functions:
+
+```python
+def smart_counter_reducer(current_value, new_value):
+    """Custom reducer that intelligently combines counters"""
+    if isinstance(current_value, dict) and isinstance(new_value, dict):
+        # Merge dictionaries by adding counter values
+        result = current_value.copy()
+        for key, value in new_value.items():
+            result[key] = result.get(key, 0) + value
+        return result
+    else:
+        # Fallback to simple addition
+        return (current_value or 0) + (new_value or 0)
+
+def priority_selector_reducer(current_value, new_value):
+    """Custom reducer that keeps highest priority item"""
+    if not current_value:
+        return new_value
+    if not new_value:
+        return current_value
+    
+    # Compare priorities
+    current_priority = current_value.get('priority', 0)
+    new_priority = new_value.get('priority', 0)
+    
+    return new_value if new_priority > current_priority else current_value
+
+# Use custom reducers
+graph = StateGraph(state_reducers={
+    'counters': smart_counter_reducer,
+    'best_option': priority_selector_reducer,
+    'results': 'extend'  # Mix custom and built-in reducers
+})
+```
+
+## 📊 Real-World Example: Multi-Analysis Pipeline
+
+Let's see how reducers work in a realistic scenario:
+
+```python
+from graphflow import StateGraph, Command
+import time
+
+def create_content_analyzer():
+    """Analyze content with multiple parallel processors"""
+    
+    graph = StateGraph(state_reducers={
+        'analysis_results': 'extend',      # Collect all analysis results
+        'metadata': 'merge',               # Combine metadata from all analyzers
+        'performance_stats': 'merge',      # Combine timing data
+        'final_score': 'set',              # Keep the final computed score
+        'processing_log': 'extend'         # Collect log entries
+    })
+    
+    def distribute_content(state):
+        """Send content to all analyzers"""
+        content = state.get('content', '')
+        
+        return Command(
+            update={
+                'start_time': time.time(),
+                'processing_log': [f'Starting analysis of {len(content)} chars']
+            },
+            goto=['sentiment_analyzer', 'entity_extractor', 'keyword_analyzer', 'quality_scorer']
+        )
+    
+    def sentiment_analyzer(state):
+        """Analyze sentiment with timing"""
+        start = time.time()
+        content = state.get('content', '')
+        
+        # Simulate analysis
+        time.sleep(0.2)
+        sentiment = 'positive' if 'good' in content.lower() else 'neutral'
+        
+        return {
+            'analysis_results': [{
+                'type': 'sentiment',
+                'result': sentiment,
+                'confidence': 0.85
+            }],
+            'metadata': {
+                'sentiment': sentiment,
+                'sentiment_confidence': 0.85
+            },
+            'performance_stats': {
+                'sentiment_duration': time.time() - start
+            },
+            'processing_log': ['Sentiment analysis completed']
+        }
+    
+    def entity_extractor(state):
+        """Extract entities with timing"""
+        start = time.time()
+        content = state.get('content', '')
+        
+        # Simulate entity extraction
+        time.sleep(0.3)
+        entities = ['Organization', 'Person'] if len(content) > 50 else ['Person']
+        
+        return {
+            'analysis_results': [{
+                'type': 'entities',
+                'result': entities,
+                'count': len(entities)
+            }],
+            'metadata': {
+                'entity_count': len(entities),
+                'entities': entities
+            },
+            'performance_stats': {
+                'entity_duration': time.time() - start
+            },
+            'processing_log': ['Entity extraction completed']
+        }
+    
+    def keyword_analyzer(state):
+        """Extract keywords with timing"""
+        start = time.time()
+        content = state.get('content', '')
+        
+        # Simulate keyword extraction
+        time.sleep(0.15)
+        keywords = content.lower().split()[:5]  # Simple keyword extraction
+        
+        return {
+            'analysis_results': [{
+                'type': 'keywords',
+                'result': keywords,
+                'count': len(keywords)
+            }],
+            'metadata': {
+                'keyword_count': len(keywords),
+                'top_keywords': keywords[:3]
+            },
+            'performance_stats': {
+                'keyword_duration': time.time() - start
+            },
+            'processing_log': ['Keyword analysis completed']
+        }
+    
+    def quality_scorer(state):
+        """Score content quality"""
+        start = time.time()
+        content = state.get('content', '')
+        
+        # Simulate quality scoring
+        time.sleep(0.1)
+        score = min(100, len(content) * 2)  # Simple scoring
+        
+        return {
+            'analysis_results': [{
+                'type': 'quality',
+                'result': score,
+                'grade': 'A' if score > 80 else 'B' if score > 60 else 'C'
+            }],
+            'metadata': {
+                'quality_score': score,
+                'quality_grade': 'A' if score > 80 else 'B' if score > 60 else 'C'
+            },
+            'performance_stats': {
+                'quality_duration': time.time() - start
+            },
+            'processing_log': ['Quality scoring completed'],
+            'final_score': score  # This will be the final score (set reducer)
+        }
+    
+    def combine_analysis(state):
+        """Combine all analysis results"""
+        results = state.get('analysis_results', [])
+        metadata = state.get('metadata', {})
+        stats = state.get('performance_stats', {})
+        total_time = time.time() - state.get('start_time', time.time())
+        
+        return {
+            'final_analysis': {
+                'total_analyses': len(results),
+                'metadata_summary': metadata,
+                'performance': {
+                    **stats,
+                    'total_duration': total_time,
+                    'parallel_speedup': f"{sum(stats.values()):.2f}s sequential vs {total_time:.2f}s parallel"
+                },
+                'detailed_results': results,
+                'overall_score': state.get('final_score', 0)
+            },
+            'processing_log': ['Analysis combination completed']
+        }
+    
+    # Build the graph
+    (graph
+     .add_node('distributor', distribute_content)
+     .add_node('sentiment_analyzer', sentiment_analyzer)
+     .add_node('entity_extractor', entity_extractor)
+     .add_node('keyword_analyzer', keyword_analyzer)
+     .add_node('quality_scorer', quality_scorer)
+     .add_node('combiner', combine_analysis)
+     .set_entry_point('distributor')
+     
+     # All analyzers feed into combiner
+     .add_edge('sentiment_analyzer', 'combiner')
+     .add_edge('entity_extractor', 'combiner')
+     .add_edge('keyword_analyzer', 'combiner')
+     .add_edge('quality_scorer', 'combiner'))
+    
+    return graph.compile()
+
+# Test the analyzer
+analyzer = create_content_analyzer()
+result = analyzer.invoke({
+    'content': 'This is a good example of quality content with multiple organizations and people mentioned.'
+})
+
+print("📊 Analysis Results:")
+print(f"Total analyses: {result['final_analysis']['total_analyses']}")
+print(f"Metadata: {result['final_analysis']['metadata_summary']}")
+print(f"Performance: {result['final_analysis']['performance']['parallel_speedup']}")
+print(f"Overall score: {result['final_analysis']['overall_score']}")
+print(f"Processing steps: {len(result['processing_log'])}")
+```
+
+**Output:**
+```
+📊 Analysis Results:
+Total analyses: 4
+Metadata: {'sentiment': 'positive', 'sentiment_confidence': 0.85, 'entity_count': 2, ...}
+Performance: 0.75s sequential vs 0.30s parallel
+Overall score: 180
+Processing steps: 6
+```
+
+## 🔍 How Reducer Merging Works Internally
+
+Understanding the merge process helps you design better state structures:
+
+```python
+# Internal merge process (simplified):
+class State:
+    def merge(self, updates, reducers):
+        for field, new_value in updates.items():
+            if field in reducers:
+                reducer = reducers[field]
+                current_value = self.data.get(field)
+                
+                if reducer == 'extend':
+                    # Combine lists
+                    current_list = current_value or []
+                    new_list = new_value if isinstance(new_value, list) else [new_value]
+                    self.data[field] = current_list + new_list
+                    
+                elif reducer == 'append':
+                    # Append single item
+                    current_list = current_value or []
+                    self.data[field] = current_list + [new_value]
+                    
+                elif reducer == 'merge':
+                    # Deep merge dictionaries
+                    current_dict = current_value or {}
+                    if isinstance(new_value, dict):
+                        self.data[field] = {**current_dict, **new_value}
+                    
+                elif reducer == 'set':
+                    # Simple replacement
+                    self.data[field] = new_value
+                    
+                elif callable(reducer):
+                    # Custom reducer function
+                    self.data[field] = reducer(current_value, new_value)
+            else:
+                # No reducer - simple set
+                self.data[field] = new_value
+```
+
+## 🎯 Best Practices
+
+### 1. **Choose the Right Reducer**
+```python
+# ✅ Good: Choose reducers that match your data patterns
+graph = StateGraph(state_reducers={
+    'results': 'extend',           # For collecting parallel results
+    'user_profile': 'merge',       # For building complex objects
+    'current_status': 'set',       # For status updates
+    'processing_times': 'extend'   # For performance metrics
+})
+
+# ❌ Bad: Using wrong reducer for data type
+graph = StateGraph(state_reducers={
+    'results': 'set',             # Will lose parallel results!
+    'status': 'extend'            # Will create status lists!
+})
+```
+
+### 2. **Design State Structure for Parallel Updates**
+```python
+# ✅ Good: Separate fields for different types of updates
+{
+    'individual_results': [],      # Each node adds its result
+    'shared_metadata': {},         # Nodes update different metadata fields
+    'final_status': None,          # Only final node sets this
+    'error_log': []               # Collect errors from any node
 }
 
-# After processing through various nodes...
-final_state = {
-    "user_input": "Hello, how are you?",
-    "conversation_history": [
-        {"user": "Hello, how are you?", "bot": "Hi! I'm doing well, thanks for asking!"}
-    ],
-    "user_context": {"greeting_given": True, "mood": "friendly"},
-    "current_step": "completed",
-    "response": "Hi! I'm doing well, thanks for asking!"
+# ❌ Bad: Mixed update patterns in single field
+{
+    'everything': {}  # Hard to manage with reducers
 }
 ```
 
-### State vs Variables
-
-**Traditional Programming:**
+### 3. **Handle Edge Cases**
 ```python
-# Variables scattered across functions
-def process_user_input(input_text, history, context):
-    # Process input
-    updated_history = history + [input_text]
-    updated_context = {**context, "last_input": input_text}
-    return updated_history, updated_context, response
-
-# Hard to track what data exists where
+def safe_custom_reducer(current, new):
+    """Handle None values and type mismatches"""
+    if current is None:
+        return new
+    if new is None:
+        return current
+    
+    # Ensure type compatibility
+    if type(current) != type(new):
+        return new  # Fallback to replacement
+    
+    # Your merge logic here
+    return merged_value
 ```
 
-**GraphFlow State Approach:**
+### 4. **Test Reducer Behavior**
 ```python
-# Everything centralized in state
-def process_user_input(state: ConversationState) -> dict:
+# Test your reducers with edge cases
+test_cases = [
+    ({'results': []}, {'results': ['new']}),           # Empty + data
+    ({'results': ['old']}, {'results': []}),           # Data + empty  
+    ({'results': None}, {'results': ['new']}),         # None + data
+    ({'metadata': {}}, {'metadata': {'key': 'val'}}),  # Empty + data
+]
+
+for current, new in test_cases:
+    # Test each reducer with edge cases
+    pass
+```
+
+## 🚀 Advanced State Patterns
+
+### Pattern 1: Hierarchical State Organization
+```python
+graph = StateGraph(state_reducers={
+    'processing.results': 'extend',
+    'processing.errors': 'extend', 
+    'processing.timing': 'merge',
+    'analysis.sentiment': 'set',
+    'analysis.entities': 'extend',
+    'metadata.user': 'merge',
+    'metadata.system': 'merge'
+})
+```
+
+### Pattern 2: Conditional State Updates
+```python
+def conditional_reducer(current, new):
+    """Only update if new value meets criteria"""
+    if isinstance(new, dict) and new.get('priority', 0) > current.get('priority', 0):
+        return new
+    return current
+
+graph = StateGraph(state_reducers={
+    'best_result': conditional_reducer
+})
+```
+
+### Pattern 3: State Validation
+```python
+def validated_reducer(current, new):
+    """Validate before merging"""
+    if not validate_data(new):
+        return current  # Keep current if new is invalid
+    
+    return merge_safely(current, new)
+```
+
+## 🎓 Key Takeaways
+
+1. **Reducers solve the parallel state update problem** by defining merge strategies
+2. **Choose the right reducer** for your data type and update pattern
+3. **Design state structure** to work well with parallel updates
+4. **Test edge cases** to ensure robust merging behavior
+5. **Use custom reducers** for complex merging logic
+
+**Master state management, and you'll build robust parallel workflows that never lose data!** 🎯
     # All data accessible from state
     # Updates returned as dict
     return {
@@ -57,89 +505,101 @@ def process_user_input(state: ConversationState) -> dict:
     }
 ```
 
-## Designing State Schemas with TypedDict
+## Working with Dictionary States
 
-### Basic Schema Design
+In GraphFlow, state is managed using simple Python dictionaries. Your nodes receive state as a dictionary and return dictionary updates.
+
+### Basic State Design
 
 ```python
-from typing import TypedDict, List, Optional, Dict, Any
-
-class BasicAgentState(TypedDict):
-    # Required fields (no Optional)
-    user_input: str
-    messages: List[str]
-    step_count: int
+def process_user_input(state):
+    """Process user input - state is a dict"""
+    user_input = state.get("user_input", "")
     
-    # Optional fields
-    response: Optional[str]
-    error_message: Optional[str]
-    metadata: Optional[Dict[str, Any]]
+    return {
+        "processed_input": user_input.strip().lower(),
+        "input_length": len(user_input),
+        "processing_timestamp": time.time()
+    }
 ```
 
-### Advanced Schema Patterns
+### State Structure Guidelines
 
-**Nested State for Complex Data:**
+Design your state dictionaries for clarity and ease of use:
+
 ```python
-class UserProfile(TypedDict):
-    name: str
-    preferences: List[str]
-    interaction_count: int
-
-class ConversationTurn(TypedDict):
-    timestamp: str
-    user_message: str
-    bot_response: str
-    confidence: float
-
-class AdvancedChatState(TypedDict):
-    # Core conversation data
-    current_input: str
-    conversation_history: List[ConversationTurn]
+# Example state structure for a chat agent
+initial_state = {
+    # User interaction
+    "user_input": "",
+    "conversation_history": [],
     
-    # User information
-    user_profile: Optional[UserProfile]
-    
-    # Processing state
-    current_intent: str
-    processing_stage: str
-    confidence_score: float
+    # Processing data
+    "intent": None,
+    "entities": {},
+    "response": "",
     
     # Control flow
-    should_continue: bool
-    error_occurred: bool
-    debug_info: Dict[str, Any]
+    "step": "input",
+    "retry_count": 0,
+    "session_id": None
+}
+```
+
+### Advanced State Patterns
+
+**Nested Data for Complex Use Cases:**
+```python
+def initialize_complex_state():
+    return {
+        # Core conversation data
+        "current_input": "",
+        "conversation_history": [],
+        
+        # User information
+        "user_profile": {
+            "name": "",
+            "preferences": [],
+            "interaction_count": 0
+        },
+        
+        # Processing state
+        "current_intent": "",
+        "processing_stage": "input",
+        "confidence_score": 0.0,
+        
+        # Control flow
+        "should_continue": True,
+        "error_occurred": False,
+        "debug_info": {}
+    }
 ```
 
 **State for Different Workflow Types:**
 
 ```python
-# Sequential Processing State
-class DataProcessingState(TypedDict):
-    raw_data: Dict[str, Any]
-    cleaned_data: Optional[Dict[str, Any]]
-    processed_data: Optional[Dict[str, Any]]
-    results: Optional[Dict[str, Any]]
-    processing_stage: str
-    error_details: Optional[str]
+# Data Processing Pipeline State
+def create_processing_state(raw_data):
+    return {
+        "raw_data": raw_data,
+        "cleaned_data": None,
+        "processed_data": None,
+        "results": None,
+        "processing_stage": "start",
+        "error_details": None
+    }
 
-# Agent Reasoning State  
-class ReasoningAgentState(TypedDict):
-    problem_statement: str
-    gathered_facts: List[str]
-    hypotheses: List[str]
-    evidence: List[str]
-    reasoning_steps: List[str]
-    conclusion: Optional[str]
-    confidence_level: float
-
-# Multi-step Workflow State
-class WorkflowState(TypedDict):
-    input_data: Dict[str, Any]
-    step_results: Dict[str, Any]  # Results keyed by step name
-    current_step: str
-    completed_steps: List[str]
-    failed_steps: List[str]
-    overall_status: str
+# Multi-Agent Reasoning State  
+def create_reasoning_state(problem):
+    return {
+        "problem_statement": problem,
+        "gathered_facts": [],
+        "hypotheses": [],
+        "evidence": [],
+        "reasoning_steps": [],
+        "conclusion": None,
+        "confidence_level": 0.0
+    }
 ```
 
 ## State Update Patterns
@@ -221,22 +681,24 @@ def safe_dict_update(state: MyState) -> dict:
 ### Linear Flow
 
 ```python
-class LinearState(TypedDict):
-    input_data: str
-    step1_result: Optional[str]
-    step2_result: Optional[str] 
-    step3_result: Optional[str]
-    final_output: Optional[str]
+def create_linear_state(input_data):
+    return {
+        "input_data": input_data,
+        "step1_result": None,
+        "step2_result": None, 
+        "step3_result": None,
+        "final_output": None
+    }
 
-def step1(state: LinearState) -> dict:
+def step1(state):
     result = f"Step1: {state['input_data']}"
     return {"step1_result": result}
 
-def step2(state: LinearState) -> dict:
+def step2(state):
     result = f"Step2: {state['step1_result']}"
     return {"step2_result": result}
 
-def step3(state: LinearState) -> dict:
+def step3(state):
     result = f"Step3: {state['step2_result']}"
     return {"step3_result": result, "final_output": result}
 ```
@@ -244,15 +706,17 @@ def step3(state: LinearState) -> dict:
 ### Branching Flow
 
 ```python
-class BranchingState(TypedDict):
-    input_type: str
-    input_data: Any
-    path_taken: str
-    text_result: Optional[str]
-    number_result: Optional[float]
-    image_result: Optional[Dict[str, Any]]
+def create_branching_state(input_data):
+    return {
+        "input_type": "",
+        "input_data": input_data,
+        "path_taken": "",
+        "text_result": None,
+        "number_result": None,
+        "image_result": None
+    }
 
-def classifier(state: BranchingState) -> dict:
+def classifier(state):
     if isinstance(state["input_data"], str):
         return {"input_type": "text", "path_taken": "text_processing"}
     elif isinstance(state["input_data"], (int, float)):
@@ -260,21 +724,23 @@ def classifier(state: BranchingState) -> dict:
     else:
         return {"input_type": "other", "path_taken": "general_processing"}
 
-def route_by_type(state: BranchingState) -> str:
+def route_by_type(state):
     return f"{state['input_type']}_processor"
 ```
 
 ### Accumulating Flow
 
 ```python
-class AccumulatingState(TypedDict):
-    items_to_process: List[str]
-    current_index: int
-    processed_items: List[str]
-    accumulated_result: str
-    is_complete: bool
+def create_accumulating_state(items):
+    return {
+        "items_to_process": items,
+        "current_index": 0,
+        "processed_items": [],
+        "accumulated_result": "",
+        "is_complete": False
+    }
 
-def process_next_item(state: AccumulatingState) -> Command:
+def process_next_item(state):
     items = state["items_to_process"]
     index = state["current_index"]
     
@@ -323,35 +789,33 @@ def validated_processor(state: MyState) -> dict:
     return {"result": "validated processing complete"}
 ```
 
-### Type Checking with mypy
+### Runtime Validation
 
 ```python
-# Enable strict type checking
-# mypy --strict your_graphflow_app.py
-
-from typing import TypedDict, Optional, List
-
-class StrictState(TypedDict):
-    required_string: str
-    required_number: int
-    optional_list: Optional[List[str]]
-
-def type_safe_processor(state: StrictState) -> dict:
-    # mypy will catch type errors here
-    name: str = state["required_string"]  # ✓ Correct
-    count: int = state["required_number"]  # ✓ Correct
+def validate_state(state):
+    """Validate state structure at runtime."""
+    required_fields = ["step_count", "input_data"]
     
-    # These would cause mypy errors:
-    # wrong_type: int = state["required_string"]  # ✗ Type error
-    # missing_field = state["nonexistent"]        # ✗ Key error
+    for field in required_fields:
+        if field not in state:
+            raise KeyError(f"Missing required field: {field}")
     
-    return {"processed": f"{name} ({count})"}
+    if not isinstance(state["step_count"], int):
+        raise TypeError("step_count must be an integer")
+    
+    if state["step_count"] < 0:
+        raise ValueError("step_count cannot be negative")
+
+def validated_processor(state):
+    validate_state(state)
+    # ... process with confidence
+    return {"result": "validated processing complete"}
 ```
 
 ### Default Value Patterns
 
 ```python
-def processor_with_defaults(state: MyState) -> dict:
+def processor_with_defaults(state):
     """Handle missing optional fields gracefully."""
     
     # Use get() with defaults for optional fields
@@ -375,13 +839,20 @@ def processor_with_defaults(state: MyState) -> dict:
 ### State Machine Pattern
 
 ```python
-class StateMachineState(TypedDict):
-    current_state: str
-    valid_transitions: Dict[str, List[str]]
-    state_data: Dict[str, Any]
-    transition_history: List[str]
+def create_state_machine(initial_state="idle"):
+    return {
+        "current_state": initial_state,
+        "valid_transitions": {
+            "idle": ["processing"],
+            "processing": ["completed", "error"],
+            "error": ["idle", "processing"],
+            "completed": ["idle"]
+        },
+        "state_data": {},
+        "transition_history": []
+    }
 
-def state_machine_processor(state: StateMachineState) -> Command:
+def state_machine_processor(state):
     current = state["current_state"]
     transitions = state["valid_transitions"]
     
@@ -414,13 +885,15 @@ def state_machine_processor(state: StateMachineState) -> Command:
 ### Cache Pattern
 
 ```python
-class CachedState(TypedDict):
-    cache: Dict[str, Any]
-    cache_hits: int
-    cache_misses: int
-    current_query: str
+def create_cached_state():
+    return {
+        "cache": {},
+        "cache_hits": 0,
+        "cache_misses": 0,
+        "current_query": ""
+    }
 
-def cached_processor(state: CachedState) -> dict:
+def cached_processor(state):
     query = state["current_query"]
     cache = state["cache"]
     
@@ -449,15 +922,17 @@ def cached_processor(state: CachedState) -> dict:
 ### Error Handling Pattern
 
 ```python
-class ErrorHandlingState(TypedDict):
-    success: bool
-    error_message: Optional[str]
-    error_code: Optional[str]
-    retry_count: int
-    max_retries: int
-    last_successful_step: Optional[str]
+def create_error_handling_state():
+    return {
+        "success": True,
+        "error_message": None,
+        "error_code": None,
+        "retry_count": 0,
+        "max_retries": 3,
+        "last_successful_step": None
+    }
 
-def error_aware_processor(state: ErrorHandlingState) -> Command:
+def error_aware_processor(state):
     try:
         result = risky_operation(state["input_data"])
         
@@ -501,23 +976,27 @@ def error_aware_processor(state: ErrorHandlingState) -> Command:
 
 ```python
 # AVOID: Storing large objects in state
-class BadState(TypedDict):
-    huge_dataframe: Any  # Don't store large DataFrames in state
-    entire_file_content: str  # Don't store large files
-    full_image_data: bytes  # Don't store binary data
+def bad_state_example():
+    return {
+        "huge_dataframe": df,  # Don't store large DataFrames in state
+        "entire_file_content": file_content,  # Don't store large files
+        "full_image_data": image_bytes  # Don't store binary data
+    }
 
 # PREFER: Store references and metadata
-class GoodState(TypedDict):
-    dataframe_path: str  # Store file path instead
-    file_metadata: Dict[str, Any]  # Store summary info
-    image_id: str  # Store identifier
-    processing_results: Dict[str, float]  # Store computed results
+def good_state_example():
+    return {
+        "dataframe_path": "/path/to/data.csv",  # Store file path instead
+        "file_metadata": {"size": 1024, "lines": 100},  # Store summary info
+        "image_id": "img_123",  # Store identifier
+        "processing_results": {"score": 0.95}  # Store computed results
+    }
 ```
 
 ### Efficient Updates
 
 ```python
-def efficient_list_update(state: MyState) -> dict:
+def efficient_list_update(state):
     """Efficient ways to update lists."""
     current_items = state.get("items", [])
     
@@ -548,11 +1027,6 @@ def efficient_dict_update(state: MyState) -> dict:
 
 ```python
 import unittest
-from typing import TypedDict
-
-class TestState(TypedDict):
-    counter: int
-    items: List[str]
 
 class TestStateManagement(unittest.TestCase):
     
@@ -560,7 +1034,7 @@ class TestStateManagement(unittest.TestCase):
         """Test basic state updates."""
         initial_state = {"counter": 0, "items": []}
         
-        def increment_counter(state: TestState) -> dict:
+        def increment_counter(state):
             return {"counter": state["counter"] + 1}
         
         result = increment_counter(initial_state)
@@ -609,13 +1083,13 @@ if __name__ == "__main__":
 
 ### Do's ✅
 
-1. **Use TypedDict** for all state schemas
+1. **Use simple dictionaries** for all state structures
 2. **Return new objects** instead of mutating existing ones
-3. **Validate required fields** in node functions
-4. **Use Optional[]** for fields that might not exist
+3. **Validate required fields** in node functions  
+4. **Use None for optional fields** that might not exist
 5. **Keep state minimal** - store only what you need
 6. **Use descriptive field names** like `user_input` not `data`
-7. **Group related fields** in nested TypedDict structures
+7. **Group related fields** in nested dictionary structures
 8. **Handle missing fields gracefully** with `.get()` and defaults
 
 ### Don'ts ❌
@@ -623,7 +1097,7 @@ if __name__ == "__main__":
 1. **Don't mutate state directly** - always return updates
 2. **Don't store large objects** in state - use references
 3. **Don't use overly nested structures** - keep it flat when possible
-4. **Don't ignore type hints** - they prevent bugs
+4. **Don't ignore field validation** - check types when needed
 5. **Don't make everything optional** - be explicit about requirements
 6. **Don't mix data types** in the same field inconsistently
 7. **Don't forget error handling** for state validation
@@ -633,27 +1107,28 @@ if __name__ == "__main__":
 
 ```python
 # Perfect state management example
-from typing import TypedDict, List, Optional, Dict, Any
 
-class WellDesignedState(TypedDict):
-    # Required fields (core data)
-    user_id: str
-    session_id: str
-    input_text: str
-    
-    # Processing state
-    current_step: str
-    completed_steps: List[str]
-    
-    # Results (optional until computed)
-    processed_result: Optional[str]
-    confidence_score: Optional[float]
-    
-    # Metadata
-    metadata: Dict[str, Any]
-    error_info: Optional[Dict[str, str]]
+def create_well_designed_state(user_id, session_id, input_text):
+    return {
+        # Required fields (core data)
+        "user_id": user_id,
+        "session_id": session_id,
+        "input_text": input_text,
+        
+        # Processing state
+        "current_step": "start",
+        "completed_steps": [],
+        
+        # Results (optional until computed)
+        "processed_result": None,
+        "confidence_score": None,
+        
+        # Metadata
+        "metadata": {},
+        "error_info": None
+    }
 
-def well_designed_processor(state: WellDesignedState) -> dict:
+def well_designed_processor(state):
     # Validate required fields
     if not state.get("input_text", "").strip():
         return {
@@ -678,4 +1153,4 @@ def well_designed_processor(state: WellDesignedState) -> dict:
 
 ---
 
-**Next: [Chapter 6: Nodes and Edges →](06-nodes-edges.md)**
+**Next: [Architecture Guide →](04-architecture.md)**
