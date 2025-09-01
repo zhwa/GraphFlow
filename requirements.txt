@@ -1,0 +1,17 @@
+# GraphFlow Requirements
+# Core dependencies (minimal)
+requests>=2.25.0
+
+# Optional LLM provider dependencies
+# Install with: pip install -r requirements.txt
+
+# For OpenAI support:
+# openai>=1.0.0
+
+# For Anthropic support:  
+# anthropic>=0.3.0
+
+# For development:
+# pytest>=6.0
+# black>=21.0
+# flake8>=3.8
