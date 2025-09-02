@@ -1,7 +1,6 @@
 """
 GraphFlow Example: Async Multi-Agent Game
 
-
 This example demonstrates:
 - Async concurrent execution with multiple agents
 - Inter-agent communication through queues
@@ -41,25 +40,25 @@ class GameState(TypedDict):
     forbidden_words: List[str]
     max_rounds: int
     current_round: int
-    
+
     # Game state
     game_status: str  # "playing", "won", "lost", "ended"
     winner: Optional[str]
     game_over: bool
-    
+
     # Communication
     hinter_queue: Any  # asyncio.Queue
     guesser_queue: Any  # asyncio.Queue
-    
+
     # Game history
     hints_given: List[str]
     guesses_made: List[str]
     past_wrong_guesses: List[str]
-    
+
     # Agent states
     hinter_active: bool
     guesser_active: bool
-    
+
     # Timing and stats
     start_time: float
     end_time: Optional[float]
@@ -68,7 +67,7 @@ class GameState(TypedDict):
 async def setup_llm_for_game(state: GameState) -> Command:
     """Configure LLM provider for the multi-agent game."""
     print("🔧 Setting up LLM provider for game agents...")
-    
+
     if os.environ.get("OPENAI_API_KEY"):
         configure_llm("openai", model="gpt-4")
         print("✅ Using OpenAI GPT-4 for game agents")
@@ -86,7 +85,7 @@ async def setup_llm_for_game(state: GameState) -> Command:
             print("1. Set OPENAI_API_KEY environment variable, OR")
             print("2. Set ANTHROPIC_API_KEY environment variable, OR")
             print("3. Start Ollama server: ollama serve")
-    
+
     return Command(update={})
 
 async def initialize_game(state: GameState) -> Command:
@@ -95,14 +94,14 @@ async def initialize_game(state: GameState) -> Command:
     print(f"Target word: {state['target_word']}")
     print(f"Forbidden words: {', '.join(state['forbidden_words'])}")
     print("=" * 50)
-    
+
     # Create communication queues
     hinter_queue = asyncio.Queue()
     guesser_queue = asyncio.Queue()
-    
+
     # Send initial empty message to start the game
     await hinter_queue.put("")
-    
+
     return Command(
         update={
             "hinter_queue": hinter_queue,
@@ -120,21 +119,21 @@ async def initialize_game(state: GameState) -> Command:
 async def hinter_agent(state: GameState) -> Command:
     """
     Hinter agent that provides hints for the target word.
-    
+
     """
     if not state["hinter_active"] or state["game_over"]:
         return Command(update={"hinter_active": False}, goto=END)
-    
+
     try:
         # Wait for message from guesser (or empty string at start)
         guess = await asyncio.wait_for(state["hinter_queue"].get(), timeout=30.0)
-        
+
         if guess == "GAME_OVER":
             return Command(
                 update={"hinter_active": False, "game_status": "ended"},
                 goto=END
             )
-        
+
         # Generate hint based on current game state
         hint = await generate_hint(
             state["target_word"],
@@ -142,12 +141,12 @@ async def hinter_agent(state: GameState) -> Command:
             state["past_wrong_guesses"],
             state["hints_given"]
         )
-        
+
         print(f"\n🎯 Hinter: {hint}")
-        
+
         # Send hint to guesser
         await state["guesser_queue"].put(hint)
-        
+
         return Command(
             update={
                 "hints_given": state["hints_given"] + [hint],
@@ -156,7 +155,7 @@ async def hinter_agent(state: GameState) -> Command:
             },
             goto="check_game_state"
         )
-        
+
     except asyncio.TimeoutError:
         print("⏰ Hinter timeout - ending game")
         return Command(
@@ -181,33 +180,33 @@ async def hinter_agent(state: GameState) -> Command:
 async def guesser_agent(state: GameState) -> Command:
     """
     Guesser agent that makes guesses based on hints.
-    
+
     """
     if not state["guesser_active"] or state["game_over"]:
         return Command(update={"guesser_active": False}, goto=END)
-    
+
     try:
         # Wait for hint from hinter
         hint = await asyncio.wait_for(state["guesser_queue"].get(), timeout=30.0)
-        
+
         # Generate guess based on hint and game history
         guess = await generate_guess(
             hint,
             state["past_wrong_guesses"],
             state["guesses_made"]
         )
-        
+
         print(f"🤔 Guesser: I think it's '{guess}'")
-        
+
         # Check if guess is correct
         is_correct = guess.lower().strip() == state["target_word"].lower().strip()
-        
+
         if is_correct:
             print("🎉 Correct! Game won!")
-            
+
             # Notify hinter that game is over
             await state["hinter_queue"].put("GAME_OVER")
-            
+
             return Command(
                 update={
                     "game_status": "won",
@@ -221,12 +220,12 @@ async def guesser_agent(state: GameState) -> Command:
             )
         else:
             print(f"❌ Incorrect guess: '{guess}'")
-            
+
             # Check if max rounds reached
             if state["current_round"] >= state["max_rounds"]:
                 print("⏱️ Max rounds reached - game over!")
                 await state["hinter_queue"].put("GAME_OVER")
-                
+
                 return Command(
                     update={
                         "game_status": "lost",
@@ -239,10 +238,10 @@ async def guesser_agent(state: GameState) -> Command:
                     },
                     goto=END
                 )
-            
+
             # Continue game - send guess to hinter
             await state["hinter_queue"].put(guess)
-            
+
             return Command(
                 update={
                     "guesses_made": state["guesses_made"] + [guess],
@@ -251,7 +250,7 @@ async def guesser_agent(state: GameState) -> Command:
                 },
                 goto="check_game_state"
             )
-            
+
     except asyncio.TimeoutError:
         print("⏰ Guesser timeout - ending game")
         return Command(
@@ -277,7 +276,7 @@ async def check_game_state(state: GameState) -> Command:
     """Check game state and decide whether to continue."""
     if state["game_over"]:
         return Command(update={}, goto="end_game")
-    
+
     if state["current_round"] >= state["max_rounds"]:
         return Command(
             update={
@@ -287,7 +286,7 @@ async def check_game_state(state: GameState) -> Command:
             },
             goto="end_game"
         )
-    
+
     # Game continues - both agents should continue their loops
     return Command(update={}, goto="continue_game")
 
@@ -299,7 +298,7 @@ async def end_game(state: GameState) -> Command:
     """Handle game ending and show results."""
     end_time = state.get("end_time", time.time())
     duration = end_time - state["start_time"]
-    
+
     print(f"\n🏁 Game Over!")
     print(f"Status: {state['game_status']}")
     print(f"Winner: {state.get('winner', 'None')}")
@@ -307,26 +306,26 @@ async def end_game(state: GameState) -> Command:
     print(f"Total turns: {state['total_turns']}")
     print(f"Hints given: {len(state['hints_given'])}")
     print(f"Guesses made: {len(state['guesses_made'])}")
-    
+
     if state["hints_given"]:
         print(f"\nHints: {', '.join(state['hints_given'])}")
     if state["guesses_made"]:
         print(f"Guesses: {', '.join(state['guesses_made'])}")
-    
+
     return Command(update={"final_stats_displayed": True})
 
 async def generate_hint(target_word: str, forbidden_words: List[str], 
                        past_guesses: List[str], previous_hints: List[str]) -> str:
     """Generate a hint for the target word avoiding forbidden words using LLM."""
-    
+
     # Simulate AI thinking time
     await asyncio.sleep(0.5)
-    
+
     # Create context for LLM
     forbidden_text = ', '.join(forbidden_words)
     wrong_guesses_text = ', '.join(past_guesses) if past_guesses else "None"
     previous_hints_text = '\n'.join(f"- {hint}" for hint in previous_hints) if previous_hints else "None"
-    
+
     hint_prompt = f"""You are playing Taboo! You need to give a hint to help someone guess the target word.
 
 TARGET WORD: {target_word}
@@ -349,24 +348,24 @@ Hint:"""
     try:
         # Try to use LLM for intelligent hint generation
         hint = call_llm(hint_prompt).strip()
-        
+
         # Clean up the response
         if hint.startswith("Hint:"):
             hint = hint[5:].strip()
         if hint.startswith('"') and hint.endswith('"'):
             hint = hint[1:-1]
-        
+
         # Validate hint doesn't contain forbidden words
         hint_words = hint.lower().split()
         forbidden_found = any(forbidden.lower() in ' '.join(hint_words) for forbidden in forbidden_words)
-        
+
         if forbidden_found:
             print(f"⚠️  LLM hint contained forbidden words, using fallback")
             return generate_hint_fallback(target_word, forbidden_words, past_guesses, previous_hints)
-        
+
         print(f"🤖 LLM generated hint: {hint}")
         return hint
-        
+
     except Exception as e:
         print(f"⚠️  LLM hint generation failed: {e}")
         return generate_hint_fallback(target_word, forbidden_words, past_guesses, previous_hints)
@@ -374,7 +373,7 @@ Hint:"""
 def generate_hint_fallback(target_word: str, forbidden_words: List[str], 
                          past_guesses: List[str], previous_hints: List[str]) -> str:
     """Fallback hint generation when LLM is unavailable."""
-    
+
     # Simple hint generation logic
     hints_by_word = {
         "nostalgic": [
@@ -406,7 +405,7 @@ def generate_hint_fallback(target_word: str, forbidden_words: List[str],
             "Unexpected good fortune"
         ]
     }
-    
+
     available_hints = hints_by_word.get(target_word.lower(), [
         "Think of a common word",
         "It's something you might encounter daily",
@@ -414,17 +413,17 @@ def generate_hint_fallback(target_word: str, forbidden_words: List[str],
         "What comes to mind first?",
         "It's more specific than you think"
     ])
-    
+
     # Filter out hints that use forbidden words
     filtered_hints = []
     for hint in available_hints:
         hint_words = hint.lower().split()
         if not any(forbidden.lower() in hint_words for forbidden in forbidden_words):
             filtered_hints.append(hint)
-    
+
     # Avoid repeating previous hints
     new_hints = [h for h in filtered_hints if h not in previous_hints]
-    
+
     if new_hints:
         return random.choice(new_hints)
     elif filtered_hints:
@@ -435,13 +434,13 @@ def generate_hint_fallback(target_word: str, forbidden_words: List[str],
 async def generate_guess(hint: str, past_wrong_guesses: List[str], 
                         all_guesses: List[str]) -> str:
     """Generate a guess based on the hint and game history using LLM."""
-    
+
     # Simulate AI thinking time
     await asyncio.sleep(0.3)
-    
+
     # Create context for LLM
     wrong_guesses_text = ', '.join(past_wrong_guesses) if past_wrong_guesses else "None"
-    
+
     guess_prompt = f"""You are playing Taboo! You need to guess a word based on the hint given.
 
 HINT: "{hint}"
@@ -458,16 +457,16 @@ Guess:"""
     try:
         # Try to use LLM for intelligent guess generation
         guess = call_llm(guess_prompt).strip()
-        
+
         # Clean up the response
         if guess.startswith("Guess:"):
             guess = guess[6:].strip()
         if guess.startswith('"') and guess.endswith('"'):
             guess = guess[1:-1]
-        
+
         # Take only the first word if multiple words returned
         guess = guess.split()[0].lower() if guess.split() else guess.lower()
-        
+
         # Make sure it's not a repeated wrong guess
         if guess not in past_wrong_guesses:
             print(f"🤖 LLM guessed: {guess}")
@@ -475,7 +474,7 @@ Guess:"""
         else:
             print(f"⚠️  LLM repeated a wrong guess, using fallback")
             return generate_guess_fallback(hint, past_wrong_guesses, all_guesses)
-        
+
     except Exception as e:
         print(f"⚠️  LLM guess generation failed: {e}")
         return generate_guess_fallback(hint, past_wrong_guesses, all_guesses)
@@ -483,9 +482,9 @@ Guess:"""
 def generate_guess_fallback(hint: str, past_wrong_guesses: List[str], 
                           all_guesses: List[str]) -> str:
     """Fallback guess generation when LLM is unavailable."""
-    
+
     hint_lower = hint.lower()
-    
+
     # Pattern matching for different hints
     if "feeling" in hint_lower or "emotion" in hint_lower:
         candidates = ["nostalgic", "happy", "sad", "excited", "peaceful"]
@@ -500,10 +499,10 @@ def generate_guess_fallback(hint: str, past_wrong_guesses: List[str],
     else:
         # Generic guesses
         candidates = ["adventure", "mysterious", "nostalgic", "serendipity", "beautiful", "wonderful", "amazing"]
-    
+
     # Filter out past wrong guesses
     candidates = [word for word in candidates if word not in past_wrong_guesses]
-    
+
     if candidates:
         return random.choice(candidates)
     else:
@@ -515,7 +514,7 @@ def generate_guess_fallback(hint: str, past_wrong_guesses: List[str],
 def build_async_game_graph():
     """Build the async multi-agent game graph."""
     graph = StateGraph(GameState)
-    
+
     # Add async nodes
     graph.add_node("setup_llm", setup_llm_for_game)
     graph.add_node("initialize", initialize_game)
@@ -524,20 +523,20 @@ def build_async_game_graph():
     graph.add_node("check_state", check_game_state)
     graph.add_node("continue_game", continue_game)
     graph.add_node("end_game", end_game)
-    
+
     # Set up flow
     graph.add_edge("setup_llm", "initialize")
     graph.add_edge("initialize", "check_state")
     graph.add_edge("continue_game", "check_state")
     graph.add_edge("end_game", END)
-    
+
     graph.set_entry_point("setup_llm")
-    
+
     return graph.compile()
 
 async def run_concurrent_agents(game_state: GameState):
     """Run hinter and guesser agents concurrently."""
-    
+
     async def run_hinter():
         while game_state["hinter_active"] and not game_state["game_over"]:
             try:
@@ -552,7 +551,7 @@ async def run_concurrent_agents(game_state: GameState):
                 print(f"Hinter error: {e}")
                 game_state["hinter_active"] = False
             await asyncio.sleep(0.1)
-    
+
     async def run_guesser():
         while game_state["guesser_active"] and not game_state["game_over"]:
             try:
@@ -567,7 +566,7 @@ async def run_concurrent_agents(game_state: GameState):
                 print(f"Guesser error: {e}")
                 game_state["guesser_active"] = False
             await asyncio.sleep(0.1)
-    
+
     # Run both agents concurrently
     await asyncio.gather(run_hinter(), run_guesser())
 
@@ -575,7 +574,7 @@ async def main():
     """Main async function to run the multi-agent game."""
     print("GraphFlow Async Multi-Agent Taboo Game")
     print("=" * 50)
-    
+
     # Game configurations
     games = [
         {
@@ -594,13 +593,13 @@ async def main():
             "max_rounds": 10
         }
     ]
-    
+
     for i, game_config in enumerate(games, 1):
         print(f"\n🎮 Starting Game {i}/3")
         print(f"Target: {game_config['target_word']}")
         print(f"Forbidden: {', '.join(game_config['forbidden_words'])}")
         print("-" * 50)
-        
+
         # Initialize game state
         game_state = {
             "target_word": game_config["target_word"],
@@ -621,52 +620,52 @@ async def main():
             "end_time": None,
             "total_turns": 0
         }
-        
+
         try:
             # Setup LLM for the game agents
             await setup_llm_for_game(game_state)
-            
+
             # Initialize the game
             init_result = await initialize_game(game_state)
             if hasattr(init_result, 'update') and init_result.update:
                 game_state.update(init_result.update)
-            
+
             # Run concurrent agents (this is the main demo of async multi-agent)
             await run_concurrent_agents(game_state)
-            
+
             # End game
             end_result = await end_game(game_state)
-            
+
             print(f"✅ Game {i} completed!")
             if game_state.get("winner"):
                 print(f"🏆 Winner: {game_state['winner']}")
-            
+
         except Exception as e:
             print(f"❌ Game {i} error: {e}")
-        
+
         if i < len(games):
             print("\n⏳ Next game starting in 2 seconds...")
             await asyncio.sleep(2)
-    
+
     print(f"\n🏁 All games completed!")
 
 async def interactive_game():
     """Interactive mode where user can set up custom games."""
     print("Interactive Taboo Game Setup")
     print("-" * 30)
-    
+
     target_word = input("Enter target word: ").strip()
     if not target_word:
         target_word = "mystery"
-    
+
     forbidden_input = input("Enter forbidden words (comma-separated): ").strip()
     forbidden_words = [word.strip() for word in forbidden_input.split(",") if word.strip()]
-    
+
     try:
         max_rounds = int(input("Max rounds (default 8): ").strip() or "8")
     except ValueError:
         max_rounds = 8
-    
+
     game_state = {
         "target_word": target_word,
         "forbidden_words": forbidden_words,
@@ -686,13 +685,13 @@ async def interactive_game():
         "end_time": None,
         "total_turns": 0
     }
-    
+
     print(f"\n🎯 Starting custom game:")
     print(f"Target: {target_word}")
     print(f"Forbidden: {', '.join(forbidden_words)}")
     print(f"Max rounds: {max_rounds}")
     print("-" * 40)
-    
+
     try:
         init_updates = await initialize_game(game_state)
         game_state.update(init_updates)
@@ -703,7 +702,7 @@ async def interactive_game():
 
 if __name__ == "__main__":
     import sys
-    
+
     if len(sys.argv) > 1 and sys.argv[1] == "--interactive":
         asyncio.run(interactive_game())
     else:

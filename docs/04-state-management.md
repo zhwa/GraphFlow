@@ -129,11 +129,11 @@ def priority_selector_reducer(current_value, new_value):
         return new_value
     if not new_value:
         return current_value
-    
+
     # Compare priorities
     current_priority = current_value.get('priority', 0)
     new_priority = new_value.get('priority', 0)
-    
+
     return new_value if new_priority > current_priority else current_value
 
 # Use custom reducers
@@ -154,7 +154,7 @@ import time
 
 def create_content_analyzer():
     """Analyze content with multiple parallel processors"""
-    
+
     graph = StateGraph(state_reducers={
         'analysis_results': 'extend',      # Collect all analysis results
         'metadata': 'merge',               # Combine metadata from all analyzers
@@ -162,11 +162,11 @@ def create_content_analyzer():
         'final_score': 'set',              # Keep the final computed score
         'processing_log': 'extend'         # Collect log entries
     })
-    
+
     def distribute_content(state):
         """Send content to all analyzers"""
         content = state.get('content', '')
-        
+
         return Command(
             update={
                 'start_time': time.time(),
@@ -174,16 +174,16 @@ def create_content_analyzer():
             },
             goto=['sentiment_analyzer', 'entity_extractor', 'keyword_analyzer', 'quality_scorer']
         )
-    
+
     def sentiment_analyzer(state):
         """Analyze sentiment with timing"""
         start = time.time()
         content = state.get('content', '')
-        
+
         # Simulate analysis
         time.sleep(0.2)
         sentiment = 'positive' if 'good' in content.lower() else 'neutral'
-        
+
         return {
             'analysis_results': [{
                 'type': 'sentiment',
@@ -199,16 +199,16 @@ def create_content_analyzer():
             },
             'processing_log': ['Sentiment analysis completed']
         }
-    
+
     def entity_extractor(state):
         """Extract entities with timing"""
         start = time.time()
         content = state.get('content', '')
-        
+
         # Simulate entity extraction
         time.sleep(0.3)
         entities = ['Organization', 'Person'] if len(content) > 50 else ['Person']
-        
+
         return {
             'analysis_results': [{
                 'type': 'entities',
@@ -224,16 +224,16 @@ def create_content_analyzer():
             },
             'processing_log': ['Entity extraction completed']
         }
-    
+
     def keyword_analyzer(state):
         """Extract keywords with timing"""
         start = time.time()
         content = state.get('content', '')
-        
+
         # Simulate keyword extraction
         time.sleep(0.15)
         keywords = content.lower().split()[:5]  # Simple keyword extraction
-        
+
         return {
             'analysis_results': [{
                 'type': 'keywords',
@@ -249,16 +249,16 @@ def create_content_analyzer():
             },
             'processing_log': ['Keyword analysis completed']
         }
-    
+
     def quality_scorer(state):
         """Score content quality"""
         start = time.time()
         content = state.get('content', '')
-        
+
         # Simulate quality scoring
         time.sleep(0.1)
         score = min(100, len(content) * 2)  # Simple scoring
-        
+
         return {
             'analysis_results': [{
                 'type': 'quality',
@@ -275,14 +275,14 @@ def create_content_analyzer():
             'processing_log': ['Quality scoring completed'],
             'final_score': score  # This will be the final score (set reducer)
         }
-    
+
     def combine_analysis(state):
         """Combine all analysis results"""
         results = state.get('analysis_results', [])
         metadata = state.get('metadata', {})
         stats = state.get('performance_stats', {})
         total_time = time.time() - state.get('start_time', time.time())
-        
+
         return {
             'final_analysis': {
                 'total_analyses': len(results),
@@ -297,7 +297,7 @@ def create_content_analyzer():
             },
             'processing_log': ['Analysis combination completed']
         }
-    
+
     # Build the graph
     (graph
      .add_node('distributor', distribute_content)
@@ -307,13 +307,13 @@ def create_content_analyzer():
      .add_node('quality_scorer', quality_scorer)
      .add_node('combiner', combine_analysis)
      .set_entry_point('distributor')
-     
+
      # All analyzers feed into combiner
      .add_edge('sentiment_analyzer', 'combiner')
      .add_edge('entity_extractor', 'combiner')
      .add_edge('keyword_analyzer', 'combiner')
      .add_edge('quality_scorer', 'combiner'))
-    
+
     return graph.compile()
 
 # Test the analyzer
@@ -352,28 +352,28 @@ class State:
             if field in reducers:
                 reducer = reducers[field]
                 current_value = self.data.get(field)
-                
+
                 if reducer == 'extend':
                     # Combine lists
                     current_list = current_value or []
                     new_list = new_value if isinstance(new_value, list) else [new_value]
                     self.data[field] = current_list + new_list
-                    
+
                 elif reducer == 'append':
                     # Append single item
                     current_list = current_value or []
                     self.data[field] = current_list + [new_value]
-                    
+
                 elif reducer == 'merge':
                     # Deep merge dictionaries
                     current_dict = current_value or {}
                     if isinstance(new_value, dict):
                         self.data[field] = {**current_dict, **new_value}
-                    
+
                 elif reducer == 'set':
                     # Simple replacement
                     self.data[field] = new_value
-                    
+
                 elif callable(reducer):
                     # Custom reducer function
                     self.data[field] = reducer(current_value, new_value)
@@ -425,11 +425,11 @@ def safe_custom_reducer(current, new):
         return new
     if new is None:
         return current
-    
+
     # Ensure type compatibility
     if type(current) != type(new):
         return new  # Fallback to replacement
-    
+
     # Your merge logic here
     return merged_value
 ```
@@ -483,7 +483,7 @@ def validated_reducer(current, new):
     """Validate before merging"""
     if not validate_data(new):
         return current  # Keep current if new is invalid
-    
+
     return merge_safely(current, new)
 ```
 
@@ -516,7 +516,7 @@ In GraphFlow, state is managed using simple Python dictionaries. Your nodes rece
 def process_user_input(state):
     """Process user input - state is a dict"""
     user_input = state.get("user_input", "")
-    
+
     return {
         "processed_input": user_input.strip().lower(),
         "input_length": len(user_input),
@@ -534,12 +534,12 @@ initial_state = {
     # User interaction
     "user_input": "",
     "conversation_history": [],
-    
+
     # Processing data
     "intent": None,
     "entities": {},
     "response": "",
-    
+
     # Control flow
     "step": "input",
     "retry_count": 0,
@@ -556,19 +556,19 @@ def initialize_complex_state():
         # Core conversation data
         "current_input": "",
         "conversation_history": [],
-        
+
         # User information
         "user_profile": {
             "name": "",
             "preferences": [],
             "interaction_count": 0
         },
-        
+
         # Processing state
         "current_intent": "",
         "processing_stage": "input",
         "confidence_score": 0.0,
-        
+
         # Control flow
         "should_continue": True,
         "error_occurred": False,
@@ -625,14 +625,14 @@ def conditional_processor(state: MyState) -> dict:
     updates = {
         "step_count": state["step_count"] + 1
     }
-    
+
     if state["step_count"] > 5:
         updates["status"] = "completed"
         updates["final_result"] = "Process finished"
     else:
         updates["status"] = "in_progress"
         updates["next_action"] = "continue_processing"
-    
+
     return updates
 ```
 
@@ -643,7 +643,7 @@ def accumulating_processor(state: MyState) -> dict:
     """Build up data over multiple iterations."""
     current_results = state.get("accumulated_results", [])
     new_result = process_current_input(state["current_input"])
-    
+
     return {
         "accumulated_results": current_results + [new_result],
         "total_processed": len(current_results) + 1,
@@ -658,22 +658,22 @@ def safe_list_append(state: MyState) -> dict:
     """Safely append to lists without mutation."""
     # DON'T do this (mutates original state):
     # state["items"].append(new_item)  # BAD!
-    
+
     # DO this (creates new list):
     current_items = state.get("items", [])
     new_items = current_items + [new_item]  # GOOD!
-    
+
     return {"items": new_items}
 
 def safe_dict_update(state: MyState) -> dict:
     """Safely update nested dictionaries."""
     # DON'T do this:
     # state["config"]["setting"] = new_value  # BAD!
-    
+
     # DO this:
     current_config = state.get("config", {})
     updated_config = {**current_config, "setting": new_value}  # GOOD!
-    
+
     return {"config": updated_config}
 ```
 
@@ -744,17 +744,17 @@ def create_accumulating_state(items):
 def process_next_item(state):
     items = state["items_to_process"]
     index = state["current_index"]
-    
+
     if index >= len(items):
         return Command(
             update={"is_complete": True},
             goto=END
         )
-    
+
     current_item = items[index]
     processed = f"Processed: {current_item}"
     new_accumulated = state["accumulated_result"] + f" | {processed}"
-    
+
     return Command(
         update={
             "current_index": index + 1,
@@ -773,14 +773,14 @@ def process_next_item(state):
 def validate_state(state: MyState) -> None:
     """Validate state before processing."""
     required_fields = ["user_input", "step_count"]
-    
+
     for field in required_fields:
         if field not in state:
             raise ValueError(f"Missing required field: {field}")
-    
+
     if not isinstance(state["step_count"], int):
         raise TypeError("step_count must be an integer")
-    
+
     if state["step_count"] < 0:
         raise ValueError("step_count cannot be negative")
 
@@ -796,14 +796,14 @@ def validated_processor(state: MyState) -> dict:
 def validate_state(state):
     """Validate state structure at runtime."""
     required_fields = ["step_count", "input_data"]
-    
+
     for field in required_fields:
         if field not in state:
             raise KeyError(f"Missing required field: {field}")
-    
+
     if not isinstance(state["step_count"], int):
         raise TypeError("step_count must be an integer")
-    
+
     if state["step_count"] < 0:
         raise ValueError("step_count cannot be negative")
 
@@ -818,15 +818,15 @@ def validated_processor(state):
 ```python
 def processor_with_defaults(state):
     """Handle missing optional fields gracefully."""
-    
+
     # Use get() with defaults for optional fields
     user_name = state.get("user_name", "Anonymous")
     preferences = state.get("preferences", [])
     config = state.get("config", {"theme": "default"})
-    
+
     # Process with safe defaults
     result = f"Hello {user_name}! You have {len(preferences)} preferences."
-    
+
     return {
         "greeting": result,
         "user_name": user_name,  # Ensure it's set for future nodes
@@ -856,7 +856,7 @@ def create_state_machine(initial_state="idle"):
 def state_machine_processor(state):
     current = state["current_state"]
     transitions = state["valid_transitions"]
-    
+
     # Determine next state based on logic
     if current == "idle" and should_start_processing():
         next_state = "processing"
@@ -866,14 +866,14 @@ def state_machine_processor(state):
         next_state = "error"
     else:
         next_state = current  # Stay in current state
-    
+
     # Validate transition
     if next_state not in transitions.get(current, []):
         return Command(
             update={"error": f"Invalid transition: {current} -> {next_state}"},
             goto="error_handler"
         )
-    
+
     return Command(
         update={
             "current_state": next_state,
@@ -897,7 +897,7 @@ def create_cached_state():
 def cached_processor(state):
     query = state["current_query"]
     cache = state["cache"]
-    
+
     # Check cache first
     if query in cache:
         return {
@@ -905,13 +905,13 @@ def cached_processor(state):
             "cache_hits": state["cache_hits"] + 1,
             "from_cache": True
         }
-    
+
     # Compute result
     result = expensive_computation(query)
-    
+
     # Update cache
     updated_cache = {**cache, query: result}
-    
+
     return {
         "result": result,
         "cache": updated_cache,
@@ -936,7 +936,7 @@ def create_error_handling_state():
 def error_aware_processor(state):
     try:
         result = risky_operation(state["input_data"])
-        
+
         return Command(
             update={
                 "success": True,
@@ -946,10 +946,10 @@ def error_aware_processor(state):
             },
             goto="next_step"
         )
-        
+
     except Exception as e:
         retry_count = state["retry_count"] + 1
-        
+
         if retry_count >= state["max_retries"]:
             return Command(
                 update={
@@ -1000,11 +1000,11 @@ def good_state_example():
 def efficient_list_update(state):
     """Efficient ways to update lists."""
     current_items = state.get("items", [])
-    
+
     # For small lists: create new list
     if len(current_items) < 100:
         return {"items": current_items + [new_item]}
-    
+
     # For large lists: consider alternatives
     return {
         "items": current_items[-99:] + [new_item],  # Keep only recent items
@@ -1014,10 +1014,10 @@ def efficient_list_update(state):
 def efficient_dict_update(state: MyState) -> dict:
     """Efficient dictionary updates."""
     current_data = state.get("data", {})
-    
+
     # Shallow merge for small dicts
     return {"data": {**current_data, "new_key": "new_value"}}
-    
+
     # For deep merging, consider using a utility function
     # return {"data": deep_merge(current_data, new_data)}
 ```
@@ -1030,36 +1030,36 @@ def efficient_dict_update(state: MyState) -> dict:
 import unittest
 
 class TestStateManagement(unittest.TestCase):
-    
+
     def test_simple_update(self):
         """Test basic state updates."""
         initial_state = {"counter": 0, "items": []}
-        
+
         def increment_counter(state):
             return {"counter": state["counter"] + 1}
-        
+
         result = increment_counter(initial_state)
         expected = {"counter": 1}
-        
+
         self.assertEqual(result, expected)
-    
+
     def test_state_immutability(self):
         """Test that original state isn't modified."""
         initial_state = {"counter": 0, "items": ["a", "b"]}
         original_items = initial_state["items"]
-        
+
         def add_item(state: TestState) -> dict:
             return {"items": state["items"] + ["c"]}
-        
+
         result = add_item(initial_state)
-        
+
         # Original state should be unchanged
         self.assertEqual(initial_state["items"], ["a", "b"])
         self.assertIs(initial_state["items"], original_items)
-        
+
         # Result should have new list
         self.assertEqual(result["items"], ["a", "b", "c"])
-    
+
     def test_conditional_updates(self):
         """Test conditional state updates."""
         def conditional_processor(state: TestState) -> dict:
@@ -1067,11 +1067,11 @@ class TestStateManagement(unittest.TestCase):
                 return {"status": "complete", "counter": state["counter"]}
             else:
                 return {"status": "in_progress", "counter": state["counter"] + 1}
-        
+
         # Test in-progress case
         result1 = conditional_processor({"counter": 3, "items": []})
         self.assertEqual(result1, {"status": "in_progress", "counter": 4})
-        
+
         # Test completion case
         result2 = conditional_processor({"counter": 5, "items": []})
         self.assertEqual(result2, {"status": "complete", "counter": 5})
@@ -1115,15 +1115,15 @@ def create_well_designed_state(user_id, session_id, input_text):
         "user_id": user_id,
         "session_id": session_id,
         "input_text": input_text,
-        
+
         # Processing state
         "current_step": "start",
         "completed_steps": [],
-        
+
         # Results (optional until computed)
         "processed_result": None,
         "confidence_score": None,
-        
+
         # Metadata
         "metadata": {},
         "error_info": None
@@ -1135,10 +1135,10 @@ def well_designed_processor(state):
         return {
             "error_info": {"code": "EMPTY_INPUT", "message": "Input text is required"}
         }
-    
+
     # Process with confidence
     result = process_text(state["input_text"])
-    
+
     # Return clean updates
     return {
         "processed_result": result,

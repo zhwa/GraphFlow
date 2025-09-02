@@ -21,18 +21,18 @@ from graphflow import StateGraph, Command
 
 def create_research_workflow():
     """A research agent that gathers information from multiple sources in parallel"""
-    
+
     # Configure parallel execution with state merging
     graph = StateGraph(state_reducers={
         'research_results': 'extend',    # Collect all research findings
         'source_metadata': 'merge',      # Combine metadata from all sources
         'processing_log': 'extend'       # Track processing steps
     })
-    
+
     def analyze_query(state):
         """Analyze the research query and determine information needs"""
         query = state.get('query', '')
-        
+
         # Determine which research sources to use
         return Command(
             update={
@@ -42,12 +42,12 @@ def create_research_workflow():
             },
             goto=['web_search', 'academic_search', 'news_search', 'social_search']
         )
-    
+
     def web_search(state):
         """Simulate web search results"""
         import time
         time.sleep(0.5)  # Simulate API call
-        
+
         return {
             'research_results': [{
                 'source': 'web_search',
@@ -59,12 +59,12 @@ def create_research_workflow():
             },
             'processing_log': ['Web search completed']
         }
-    
+
     def academic_search(state):
         """Simulate academic database search"""
         import time
         time.sleep(0.7)  # Simulate slower academic search
-        
+
         return {
             'research_results': [{
                 'source': 'academic_search',
@@ -76,12 +76,12 @@ def create_research_workflow():
             },
             'processing_log': ['Academic search completed']
         }
-    
+
     def news_search(state):
         """Simulate news search"""
         import time
         time.sleep(0.3)  # Fast news API
-        
+
         return {
             'research_results': [{
                 'source': 'news_search',
@@ -93,12 +93,12 @@ def create_research_workflow():
             },
             'processing_log': ['News search completed']
         }
-    
+
     def social_search(state):
         """Simulate social media search"""
         import time
         time.sleep(0.4)
-        
+
         return {
             'research_results': [{
                 'source': 'social_search',
@@ -110,15 +110,15 @@ def create_research_workflow():
             },
             'processing_log': ['Social search completed']
         }
-    
+
     def synthesize_research(state):
         """Combine all research findings into a comprehensive report"""
         results = state.get('research_results', [])
         metadata = state.get('source_metadata', {})
-        
+
         # Calculate total research quality
         total_confidence = sum(r.get('confidence', 0) for r in results) / len(results)
-        
+
         return {
             'final_report': {
                 'summary': f'Research completed using {len(results)} sources',
@@ -129,7 +129,7 @@ def create_research_workflow():
             },
             'processing_log': ['Research synthesis completed']
         }
-    
+
     # Build the graph
     (graph
      .add_node('analyzer', analyze_query)
@@ -139,13 +139,13 @@ def create_research_workflow():
      .add_node('social_search', social_search)
      .add_node('synthesizer', synthesize_research)
      .set_entry_point('analyzer')
-     
+
      # All search nodes feed into synthesizer (fan-in pattern)
      .add_edge('web_search', 'synthesizer')
      .add_edge('academic_search', 'synthesizer')
      .add_edge('news_search', 'synthesizer')
      .add_edge('social_search', 'synthesizer'))
-    
+
     return graph.compile()
 
 # Test the research workflow
@@ -173,18 +173,18 @@ print(f"Steps: {len(result['processing_log'])}")
 def create_linear_pipeline():
     """Simple sequential processing"""
     graph = StateGraph()
-    
+
     def step1(state):
         return {'result': 'step1_output', 'next': 'step2'}
-    
+
     def step2(state):
         previous = state.get('result', '')
         return {'result': f'{previous} -> step2_output', 'next': 'step3'}
-    
+
     def step3(state):
         previous = state.get('result', '')
         return {'result': f'{previous} -> step3_output'}
-    
+
     # Linear chain: step1 → step2 → step3
     (graph
      .add_node('step1', step1)
@@ -193,7 +193,7 @@ def create_linear_pipeline():
      .set_entry_point('step1')
      .add_edge('step1', 'step2')
      .add_edge('step2', 'step3'))
-    
+
     return graph.compile()
 ```
 
@@ -204,23 +204,23 @@ def create_linear_pipeline():
 def create_fanout_pipeline():
     """Distribute work, process in parallel, combine results"""
     graph = StateGraph(state_reducers={'results': 'extend'})
-    
+
     def distribute(state):
         work = state.get('work_items', [])
         return Command(
             update={'distributed_at': time.time()},
             goto=['worker1', 'worker2', 'worker3']  # Fan-out
         )
-    
+
     def worker(name):
         def work_func(state):
             return {'results': [f'{name}_completed']}
         return work_func
-    
+
     def combine(state):
         results = state.get('results', [])
         return {'summary': f'Combined {len(results)} results'}
-    
+
     # Fan-out/fan-in pattern
     (graph
      .add_node('distribute', distribute)
@@ -229,12 +229,12 @@ def create_fanout_pipeline():
      .add_node('worker3', worker('Worker3'))
      .add_node('combine', combine)
      .set_entry_point('distribute')
-     
+
      # Fan-in: all workers → combine
      .add_edge('worker1', 'combine')
      .add_edge('worker2', 'combine')
      .add_edge('worker3', 'combine'))
-    
+
     return graph.compile()
 ```
 
@@ -245,34 +245,34 @@ def create_fanout_pipeline():
 def create_conditional_workflow():
     """Route to different processors based on conditions"""
     graph = StateGraph(state_reducers={'analysis': 'extend'})
-    
+
     def classifier(state):
         """Route based on input type"""
         input_type = state.get('type', 'unknown')
-        
+
         if input_type == 'urgent':
             return Command(goto='priority_processor')
         elif input_type == 'complex':
             return Command(goto=['detailed_analyzer', 'expert_reviewer'])
         else:
             return Command(goto='standard_processor')
-    
+
     def priority_processor(state):
         return {'analysis': [{'type': 'priority', 'result': 'Fast processing'}]}
-    
+
     def detailed_analyzer(state):
         return {'analysis': [{'type': 'detailed', 'result': 'Deep analysis'}]}
-    
+
     def expert_reviewer(state):
         return {'analysis': [{'type': 'expert', 'result': 'Expert review'}]}
-    
+
     def standard_processor(state):
         return {'analysis': [{'type': 'standard', 'result': 'Standard processing'}]}
-    
+
     def final_processor(state):
         analyses = state.get('analysis', [])
         return {'final_result': f'Processed with {len(analyses)} analyses'}
-    
+
     # Conditional branching with convergence
     (graph
      .add_node('classifier', classifier)
@@ -282,13 +282,13 @@ def create_conditional_workflow():
      .add_node('standard_processor', standard_processor)
      .add_node('final_processor', final_processor)
      .set_entry_point('classifier')
-     
+
      # All paths converge at final_processor
      .add_edge('priority_processor', 'final_processor')
      .add_edge('detailed_analyzer', 'final_processor')
      .add_edge('expert_reviewer', 'final_processor')
      .add_edge('standard_processor', 'final_processor'))
-    
+
     return graph.compile()
 ```
 
@@ -303,19 +303,19 @@ def create_multistage_pipeline():
         'stage2_results': 'extend',
         'final_analysis': 'merge'
     })
-    
+
     def input_processor(state):
         """Prepare input for first stage"""
         return Command(
             update={'processed_input': 'preprocessed_data'},
             goto=['stage1_a', 'stage1_b']  # First parallel stage
         )
-    
+
     def stage1_processor(name):
         def processor(state):
             return {'stage1_results': [f'Stage1_{name}_result']}
         return processor
-    
+
     def stage1_combiner(state):
         """Combine stage 1 and launch stage 2"""
         stage1_data = state.get('stage1_results', [])
@@ -323,17 +323,17 @@ def create_multistage_pipeline():
             update={'stage1_summary': f'Stage1 completed with {len(stage1_data)} results'},
             goto=['stage2_x', 'stage2_y', 'stage2_z']  # Second parallel stage
         )
-    
+
     def stage2_processor(name):
         def processor(state):
             return {'stage2_results': [f'Stage2_{name}_result']}
         return processor
-    
+
     def final_combiner(state):
         """Final combination of all results"""
         stage1 = state.get('stage1_results', [])
         stage2 = state.get('stage2_results', [])
-        
+
         return {
             'final_analysis': {
                 'stage1_count': len(stage1),
@@ -341,7 +341,7 @@ def create_multistage_pipeline():
                 'total_processing_stages': 2
             }
         }
-    
+
     # Multi-stage pipeline
     (graph
      .add_node('input_processor', input_processor)
@@ -353,16 +353,16 @@ def create_multistage_pipeline():
      .add_node('stage2_z', stage2_processor('Z'))
      .add_node('final_combiner', final_combiner)
      .set_entry_point('input_processor')
-     
+
      # Stage 1 convergence
      .add_edge('stage1_a', 'stage1_combiner')
      .add_edge('stage1_b', 'stage1_combiner')
-     
+
      # Stage 2 convergence
      .add_edge('stage2_x', 'final_combiner')
      .add_edge('stage2_y', 'final_combiner')
      .add_edge('stage2_z', 'final_combiner'))
-    
+
     return graph.compile()
 ```
 
@@ -378,7 +378,7 @@ def create_multi_expert_agent():
         'expert_opinions': 'extend',
         'confidence_scores': 'extend'
     })
-    
+
     def problem_distributor(state):
         """Send problem to all expert agents"""
         problem = state.get('problem', '')
@@ -386,13 +386,13 @@ def create_multi_expert_agent():
             update={'distributed_problem': problem},
             goto=['technical_expert', 'business_expert', 'creative_expert']
         )
-    
+
     def technical_expert(state):
         """AI expert focused on technical analysis"""
         problem = state.get('problem', '')
         # In real implementation, this would call an LLM with technical prompts
         analysis = f"Technical analysis of: {problem}"
-        
+
         return {
             'expert_opinions': [{
                 'expert': 'technical',
@@ -401,12 +401,12 @@ def create_multi_expert_agent():
             }],
             'confidence_scores': [0.85]
         }
-    
+
     def business_expert(state):
         """AI expert focused on business implications"""
         problem = state.get('problem', '')
         analysis = f"Business analysis of: {problem}"
-        
+
         return {
             'expert_opinions': [{
                 'expert': 'business',
@@ -415,12 +415,12 @@ def create_multi_expert_agent():
             }],
             'confidence_scores': [0.78]
         }
-    
+
     def creative_expert(state):
         """AI expert focused on creative solutions"""
         problem = state.get('problem', '')
         analysis = f"Creative analysis of: {problem}"
-        
+
         return {
             'expert_opinions': [{
                 'expert': 'creative',
@@ -429,14 +429,14 @@ def create_multi_expert_agent():
             }],
             'confidence_scores': [0.72]
         }
-    
+
     def synthesize_experts(state):
         """Combine all expert opinions into final recommendation"""
         opinions = state.get('expert_opinions', [])
         confidence_scores = state.get('confidence_scores', [])
-        
+
         avg_confidence = sum(confidence_scores) / len(confidence_scores)
-        
+
         return {
             'final_recommendation': {
                 'expert_count': len(opinions),
@@ -445,7 +445,7 @@ def create_multi_expert_agent():
                 'detailed_opinions': opinions
             }
         }
-    
+
     # Build multi-expert workflow
     (graph
      .add_node('distributor', problem_distributor)
@@ -454,11 +454,11 @@ def create_multi_expert_agent():
      .add_node('creative_expert', creative_expert)
      .add_node('synthesizer', synthesize_experts)
      .set_entry_point('distributor')
-     
+
      .add_edge('technical_expert', 'synthesizer')
      .add_edge('business_expert', 'synthesizer')
      .add_edge('creative_expert', 'synthesizer'))
-    
+
     return graph.compile()
 ```
 
@@ -473,13 +473,13 @@ def create_iterative_refinement_agent():
         'current_quality': 'set',
         'improvements': 'extend'
     })
-    
+
     def quality_checker(state):
         """Check if current result meets quality threshold"""
         current_result = state.get('current_result', '')
         iteration = state.get('iteration', 0)
         quality = len(current_result) * 10  # Simple quality metric
-        
+
         if quality >= 500 or iteration >= 3:  # Good enough or max iterations
             return Command(
                 update={'final_quality': quality, 'status': 'completed'},
@@ -494,46 +494,46 @@ def create_iterative_refinement_agent():
                 },
                 goto=['grammar_refiner', 'style_refiner', 'content_refiner']
             )
-    
+
     def grammar_refiner(state):
         """Refine grammar and structure"""
         current = state.get('current_result', '')
         refined = f"{current} [grammar-refined]"
-        
+
         return {
             'refinement_history': ['Grammar refinement applied'],
             'improvements': [{'type': 'grammar', 'improvement': 'Fixed grammar issues'}]
         }
-    
+
     def style_refiner(state):
         """Refine writing style"""
         current = state.get('current_result', '')
         refined = f"{current} [style-refined]"
-        
+
         return {
             'refinement_history': ['Style refinement applied'],
             'improvements': [{'type': 'style', 'improvement': 'Improved writing style'}]
         }
-    
+
     def content_refiner(state):
         """Refine content depth"""
         current = state.get('current_result', '')
         refined = f"{current} [content-refined]"
-        
+
         return {
             'refinement_history': ['Content refinement applied'],
             'improvements': [{'type': 'content', 'improvement': 'Enhanced content depth'}],
             'current_result': refined  # Update the result being refined
         }
-    
+
     def refinement_combiner(state):
         """Combine refinements and check quality again"""
         improvements = state.get('improvements', [])
         current = state.get('current_result', '')
-        
+
         # Apply all improvements (simplified)
         refined_result = current + f" [refined-{len(improvements)}-ways]"
-        
+
         return Command(
             update={
                 'current_result': refined_result,
@@ -541,12 +541,12 @@ def create_iterative_refinement_agent():
             },
             goto='quality_checker'  # Loop back to quality check
         )
-    
+
     def final_processor(state):
         """Final processing when quality is sufficient"""
         history = state.get('refinement_history', [])
         quality = state.get('final_quality', 0)
-        
+
         return {
             'final_output': {
                 'result': state.get('current_result', ''),
@@ -555,7 +555,7 @@ def create_iterative_refinement_agent():
                 'total_improvements': len(state.get('improvements', []))
             }
         }
-    
+
     # Build iterative refinement workflow
     (graph
      .add_node('quality_checker', quality_checker)
@@ -565,12 +565,12 @@ def create_iterative_refinement_agent():
      .add_node('refinement_combiner', refinement_combiner)
      .add_node('final_processor', final_processor)
      .set_entry_point('quality_checker')
-     
+
      # Refiners feed into combiner
      .add_edge('grammar_refiner', 'refinement_combiner')
      .add_edge('style_refiner', 'refinement_combiner')
      .add_edge('content_refiner', 'refinement_combiner'))
-    
+
     return graph.compile()
 ```
 
@@ -587,7 +587,7 @@ def create_resilient_workflow():
         'errors': 'extend',
         'results': 'extend'
     })
-    
+
     def robust_processor(state):
         """Main processor with error handling"""
         try:
@@ -595,7 +595,7 @@ def create_resilient_workflow():
             import random
             if random.random() < 0.3:  # 30% failure rate
                 raise Exception("Processing failed")
-            
+
             return {
                 'results': ['Primary processing succeeded'],
                 'attempts': ['primary_success']
@@ -608,7 +608,7 @@ def create_resilient_workflow():
                 },
                 goto=['backup_processor_1', 'backup_processor_2']  # Try backups
             )
-    
+
     def backup_processor(name, success_rate=0.8):
         """Backup processor with different reliability"""
         def processor(state):
@@ -624,13 +624,13 @@ def create_resilient_workflow():
                     'attempts': [f'{name}_failed']
                 }
         return processor
-    
+
     def error_handler(state):
         """Handle final results or errors"""
         results = state.get('results', [])
         errors = state.get('errors', [])
         attempts = state.get('attempts', [])
-        
+
         if results:
             return {
                 'status': 'success',
@@ -643,7 +643,7 @@ def create_resilient_workflow():
                 'error_summary': f'{len(errors)} errors occurred',
                 'all_attempts': attempts
             }
-    
+
     # Build resilient workflow
     (graph
      .add_node('primary', robust_processor)
@@ -651,12 +651,12 @@ def create_resilient_workflow():
      .add_node('backup_2', backup_processor('Backup2', 0.8))
      .add_node('error_handler', error_handler)
      .set_entry_point('primary')
-     
+
      # All paths lead to error handler
      .add_edge('primary', 'error_handler')
      .add_edge('backup_1', 'error_handler')
      .add_edge('backup_2', 'error_handler'))
-    
+
     return graph.compile()
 ```
 
@@ -671,23 +671,23 @@ def create_monitored_workflow():
         'resource_usage': 'merge',
         'processing_events': 'extend'
     })
-    
+
     def monitored_processor(node_name):
         """Wrap processors with performance monitoring"""
         def processor(state):
             import time
             import psutil
-            
+
             start_time = time.time()
             start_memory = psutil.Process().memory_info().rss / 1024 / 1024  # MB
-            
+
             # Simulate processing
             time.sleep(0.1)
             result = f'{node_name} processing completed'
-            
+
             end_time = time.time()
             end_memory = psutil.Process().memory_info().rss / 1024 / 1024
-            
+
             return {
                 'performance_metrics': [{
                     'node': node_name,
@@ -699,19 +699,19 @@ def create_monitored_workflow():
                 f'{node_name}_result': result
             }
         return processor
-    
+
     def performance_analyzer(state):
         """Analyze performance metrics"""
         metrics = state.get('performance_metrics', [])
-        
+
         if not metrics:
             return {'performance_summary': 'No metrics available'}
-        
+
         total_duration = sum(m['duration'] for m in metrics)
         avg_duration = total_duration / len(metrics)
         max_duration = max(m['duration'] for m in metrics)
         total_memory = sum(m.get('memory_delta', 0) for m in metrics)
-        
+
         return {
             'performance_summary': {
                 'total_nodes': len(metrics),
@@ -722,7 +722,7 @@ def create_monitored_workflow():
                 'detailed_metrics': metrics
             }
         }
-    
+
     # Build monitored workflow
     (graph
      .add_node('processor_1', monitored_processor('Processor1'))
@@ -730,11 +730,11 @@ def create_monitored_workflow():
      .add_node('processor_3', monitored_processor('Processor3'))
      .add_node('analyzer', performance_analyzer)
      .set_entry_point('processor_1')
-     
+
      .add_edge('processor_1', 'processor_2')
      .add_edge('processor_2', 'processor_3')
      .add_edge('processor_3', 'analyzer'))
-    
+
     return graph.compile()
 ```
 
@@ -806,7 +806,7 @@ def timed_processor(state):
     start_time = time.time()
     result = do_processing(state)
     duration = time.time() - start_time
-    
+
     return {
         'result': result,
         'performance': {'duration': duration, 'node': 'processor'}

@@ -32,7 +32,7 @@ def greet_user(state):
 def process_input(state):
     """Process user input and decide next action."""
     user_msg = state["user_input"].lower()
-    
+
     # Generate response based on input
     if "bye" in user_msg or "goodbye" in user_msg:
         response = "Goodbye! Have a great day!"
@@ -63,7 +63,7 @@ def main():
     """Main function to demonstrate GraphFlow."""
     print("GraphFlow Quick Start Example")
     print("=" * 40)
-    
+
     # Build the graph with state reducers for managing lists
     graph = StateGraph(
         state_reducers=with_reducers(
@@ -71,19 +71,19 @@ def main():
             responses='extend'  # Collect all responses
         )
     )
-    
+
     graph.add_node("greet", greet_user)
     graph.add_node("process", process_input)
     graph.add_node("ask_more", ask_more)
-    
+
     # Set up the flow
     graph.add_edge("greet", "process")
     graph.add_edge("ask_more", "process")
     graph.set_entry_point("greet")
-    
+
     # Compile the graph
     compiled_graph = graph.compile()
-    
+
     # Test with different inputs
     test_inputs = [
         "Hello there!",
@@ -91,19 +91,19 @@ def main():
         "Tell me a joke",
         "Goodbye!"
     ]
-    
+
     for user_input in test_inputs:
         print(f"\nUser Input: {user_input}")
         print("-" * 30)
-        
+
         result = compiled_graph.invoke(create_chat_state(user_input))
-        
+
         print("Conversation:")
         for i, message in enumerate(result["messages"], 1):
             print(f"  {i}. {message}")
-        
+
         print(f"Turn count: {result['turn_count']}")
-        
+
         if "Goodbye" in result["messages"][-1]:
             print("\n(Conversation ended)")
             break

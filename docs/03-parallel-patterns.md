@@ -25,16 +25,16 @@ from graphflow import StateGraph, Command
 
 def create_basic_fanout():
     graph = StateGraph(state_reducers={'results': 'extend'})
-    
+
     def distribute_work(state):
         """Fan-out: Send work to multiple parallel processors"""
         work_items = state.get('work_items', [])
-        
+
         return Command(
             update={'status': 'processing', 'started_at': time.time()},
             goto=['processor_a', 'processor_b', 'processor_c', 'processor_d']
         )
-    
+
     def processor(name, delay=0.5):
         """Individual processor with simulated work"""
         def process_func(state):
@@ -43,17 +43,17 @@ def create_basic_fanout():
                 'results': [f'{name} processed item in {delay}s']
             }
         return process_func
-    
+
     def combine_results(state):
         """Fan-in: Combine all parallel results"""
         results = state.get('results', [])
         total_time = time.time() - state.get('started_at', time.time())
-        
+
         return {
             'summary': f'Processed {len(results)} items in {total_time:.2f}s',
             'status': 'completed'
         }
-    
+
     # Build graph
     (graph
      .add_node('start', distribute_work)
@@ -63,13 +63,13 @@ def create_basic_fanout():
      .add_node('processor_d', processor('D', 0.4))
      .add_node('combiner', combine_results)
      .set_entry_point('start')
-     
+
      # Fan-in: All processors → combiner
      .add_edge('processor_a', 'combiner')
      .add_edge('processor_b', 'combiner')
      .add_edge('processor_c', 'combiner')
      .add_edge('processor_d', 'combiner'))
-    
+
     return graph.compile()
 
 # Usage
@@ -116,7 +116,7 @@ def create_pipeline():
         'stage2_results': 'extend',
         'processing_log': 'extend'
     })
-    
+
     def preprocess(state):
         """Initial preprocessing before parallel stages"""
         return Command(
@@ -126,7 +126,7 @@ def create_pipeline():
             },
             goto=['stage1_a', 'stage1_b', 'stage1_c']  # First fan-out
         )
-    
+
     def stage1_processor(name):
         def process(state):
             # Stage 1 processing
@@ -135,11 +135,11 @@ def create_pipeline():
                 'processing_log': [f'Stage 1 {name} completed']
             }
         return process
-    
+
     def stage1_combiner(state):
         """Combine stage 1 results and fan-out to stage 2"""
         stage1_data = ' + '.join(state.get('stage1_results', []))
-        
+
         return Command(
             update={
                 'stage1_combined': stage1_data,
@@ -147,7 +147,7 @@ def create_pipeline():
             },
             goto=['stage2_x', 'stage2_y', 'stage2_z']  # Second fan-out
         )
-    
+
     def stage2_processor(name):
         def process(state):
             # Stage 2 processing using stage 1 results
@@ -156,7 +156,7 @@ def create_pipeline():
                 'processing_log': [f'Stage 2 {name} completed']
             }
         return process
-    
+
     def final_combiner(state):
         """Final combination of all results"""
         return {
@@ -167,7 +167,7 @@ def create_pipeline():
                 'combined_output': ' | '.join(state.get('stage2_results', []))
             }
         }
-    
+
     # Build the pipeline
     (graph
      .add_node('preprocess', preprocess)
@@ -180,17 +180,17 @@ def create_pipeline():
      .add_node('stage2_z', stage2_processor('Z'))
      .add_node('final_combine', final_combiner)
      .set_entry_point('preprocess')
-     
+
      # Stage 1 fan-in
      .add_edge('stage1_a', 'stage1_combine')
      .add_edge('stage1_b', 'stage1_combine')
      .add_edge('stage1_c', 'stage1_combine')
-     
+
      # Stage 2 fan-in
      .add_edge('stage2_x', 'final_combine')
      .add_edge('stage2_y', 'final_combine')
      .add_edge('stage2_z', 'final_combine'))
-    
+
     return graph.compile()
 
 # Usage
@@ -212,12 +212,12 @@ Route to different parallel processors based on input characteristics.
 ```python
 def create_conditional_router():
     graph = StateGraph(state_reducers={'analysis': 'extend'})
-    
+
     def content_classifier(state):
         """Analyze input and route to appropriate processors"""
         content = state.get('content', '')
         content_type = state.get('type', 'unknown')
-        
+
         if content_type == 'text':
             return Command(
                 update={'classification': 'text_content'},
@@ -238,43 +238,43 @@ def create_conditional_router():
                 update={'classification': 'unknown_content'},
                 goto='generic_processor'
             )
-    
+
     # Text processors
     def text_sentiment(state):
         return {'analysis': [{'type': 'sentiment', 'result': 'positive'}]}
-    
+
     def text_entities(state):
         return {'analysis': [{'type': 'entities', 'result': ['Person', 'Location']}]}
-    
+
     def text_keywords(state):
         return {'analysis': [{'type': 'keywords', 'result': ['important', 'data']}]}
-    
+
     # Image processors
     def image_objects(state):
         return {'analysis': [{'type': 'objects', 'result': ['car', 'tree', 'person']}]}
-    
+
     def image_faces(state):
         return {'analysis': [{'type': 'faces', 'result': 2}]}
-    
+
     def image_text(state):
         return {'analysis': [{'type': 'ocr', 'result': 'Street Sign'}]}
-    
+
     # Audio processors
     def audio_transcribe(state):
         return {'analysis': [{'type': 'transcript', 'result': 'Hello world'}]}
-    
+
     def audio_sentiment(state):
         return {'analysis': [{'type': 'audio_sentiment', 'result': 'neutral'}]}
-    
+
     # Generic fallback
     def generic_processor(state):
         return {'analysis': [{'type': 'generic', 'result': 'processed'}]}
-    
+
     def results_aggregator(state):
         """Combine results from whichever path was taken"""
         analyses = state.get('analysis', [])
         classification = state.get('classification', 'unknown')
-        
+
         return {
             'final_analysis': {
                 'content_type': classification,
@@ -282,7 +282,7 @@ def create_conditional_router():
                 'results': {item['type']: item['result'] for item in analyses}
             }
         }
-    
+
     # Build graph with all possible paths
     (graph
      .add_node('classifier', content_classifier)
@@ -297,7 +297,7 @@ def create_conditional_router():
      .add_node('generic_processor', generic_processor)
      .add_node('aggregator', results_aggregator)
      .set_entry_point('classifier')
-     
+
      # All paths lead to aggregator
      .add_edge('text_sentiment', 'aggregator')
      .add_edge('text_entities', 'aggregator')
@@ -308,7 +308,7 @@ def create_conditional_router():
      .add_edge('audio_transcribe', 'aggregator')
      .add_edge('audio_sentiment', 'aggregator')
      .add_edge('generic_processor', 'aggregator'))
-    
+
     return graph.compile()
 
 # Test different content types
@@ -340,11 +340,11 @@ def create_map_reduce():
         'mapped_results': 'extend',
         'processing_stats': 'merge'
     })
-    
+
     def map_phase(state):
         """Dynamically create parallel mappers based on input size"""
         items = state.get('items', [])
-        
+
         if len(items) <= 3:
             # Small collection - process sequentially
             return Command(
@@ -355,7 +355,7 @@ def create_map_reduce():
             # Large collection - parallel processing
             # Split into chunks for parallel processing
             chunk_size = max(1, len(items) // 4)  # Aim for 4 parallel processors
-            
+
             return Command(
                 update={
                     'map_strategy': 'parallel',
@@ -364,17 +364,17 @@ def create_map_reduce():
                 },
                 goto=['mapper_1', 'mapper_2', 'mapper_3', 'mapper_4']
             )
-    
+
     def single_mapper(state):
         """Process all items sequentially"""
         items = state.get('items', [])
         results = [f"Processed: {item}" for item in items]
-        
+
         return {
             'mapped_results': results,
             'processing_stats': {'mode': 'sequential', 'items': len(items)}
         }
-    
+
     def parallel_mapper(mapper_id):
         """Process a chunk of items in parallel"""
         def mapper_func(state):
@@ -382,23 +382,23 @@ def create_map_reduce():
             chunk_size = state.get('chunk_size', 1)
             start_idx = (mapper_id - 1) * chunk_size
             end_idx = start_idx + chunk_size
-            
+
             # Process this mapper's chunk
             chunk = items[start_idx:end_idx] if start_idx < len(items) else []
             results = [f"Mapper{mapper_id} processed: {item}" for item in chunk]
-            
+
             return {
                 'mapped_results': results,
                 'processing_stats': {f'mapper_{mapper_id}_items': len(chunk)}
             }
         return mapper_func
-    
+
     def reduce_phase(state):
         """Combine all mapped results"""
         results = state.get('mapped_results', [])
         stats = state.get('processing_stats', {})
         strategy = state.get('map_strategy', 'unknown')
-        
+
         return {
             'final_result': {
                 'strategy': strategy,
@@ -407,7 +407,7 @@ def create_map_reduce():
                 'stats': stats
             }
         }
-    
+
     # Build graph
     (graph
      .add_node('map_phase', map_phase)
@@ -418,14 +418,14 @@ def create_map_reduce():
      .add_node('mapper_4', parallel_mapper(4))
      .add_node('reduce_phase', reduce_phase)
      .set_entry_point('map_phase')
-     
+
      # Both sequential and parallel paths lead to reduce
      .add_edge('single_mapper', 'reduce_phase')
      .add_edge('mapper_1', 'reduce_phase')
      .add_edge('mapper_2', 'reduce_phase')
      .add_edge('mapper_3', 'reduce_phase')
      .add_edge('mapper_4', 'reduce_phase'))
-    
+
     return graph.compile()
 
 # Test with different collection sizes
@@ -458,11 +458,11 @@ def create_resilient_processor():
         'attempts': 'extend',
         'results': 'extend'
     })
-    
+
     def primary_processor(state):
         """Main processor that might fail"""
         failure_rate = state.get('failure_rate', 0.3)
-        
+
         if random.random() < failure_rate:
             # Simulate failure
             return Command(
@@ -481,7 +481,7 @@ def create_resilient_processor():
                 },
                 goto='success_handler'
             )
-    
+
     def backup_processor(name, reliability=0.8):
         """Backup processor with different reliability"""
         def backup_func(state):
@@ -496,16 +496,16 @@ def create_resilient_processor():
                     'error': f'{name} backup failed'
                 }
         return backup_func
-    
+
     def success_handler(state):
         """Handle successful processing"""
         return {'status': 'completed', 'method': 'primary'}
-    
+
     def backup_combiner(state):
         """Combine backup results - succeed if any backup works"""
         results = state.get('results', [])
         attempts = state.get('attempts', [])
-        
+
         if results:
             # At least one backup succeeded
             successful_attempts = [a for a in attempts if 'success' in a]
@@ -522,7 +522,7 @@ def create_resilient_processor():
                 'method': 'all_failed',
                 'all_attempts': attempts
             }
-    
+
     # Build resilient graph
     (graph
      .add_node('primary', primary_processor)
@@ -532,15 +532,15 @@ def create_resilient_processor():
      .add_node('success_handler', success_handler)
      .add_node('backup_combiner', backup_combiner)
      .set_entry_point('primary')
-     
+
      # Success path
      .add_edge('success_handler', 'backup_combiner')
-     
+
      # Backup paths all lead to combiner
      .add_edge('backup_a', 'backup_combiner')
      .add_edge('backup_b', 'backup_combiner')
      .add_edge('backup_c', 'backup_combiner'))
-    
+
     return graph.compile()
 
 # Test resilience
@@ -588,7 +588,7 @@ def robust_processor(state):
 def timed_processor(state):
     start_time = time.time()
     result = do_work(state)
-    
+
     return {
         'results': [result],
         'timing': [{
@@ -619,28 +619,28 @@ def create_advanced_workflow():
         'errors': 'extend',
         'metrics': 'merge'
     })
-    
+
     # Pattern 1: Conditional routing
     def input_classifier(state):
         if state.get('batch_size', 0) > 100:
             return Command(goto='large_batch_handler')
         else:
             return Command(goto='small_batch_handler')
-    
+
     # Pattern 2: Map-reduce for large batches
     def large_batch_handler(state):
         return Command(goto=['mapper_1', 'mapper_2', 'mapper_3'])
-    
+
     # Pattern 3: Simple processing for small batches
     def small_batch_handler(state):
         return Command(goto='simple_processor')
-    
+
     # Pattern 4: Resilient processing with backups
     def simple_processor(state):
         if random.random() < 0.2:  # 20% failure rate
             return Command(goto=['backup_processor'])
         return {'processed_items': ['simple_result']}
-    
+
     # Build combined workflow...
     # (implementation details omitted for brevity)
 ```

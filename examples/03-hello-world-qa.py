@@ -26,10 +26,10 @@ def answer_question(state):
     Process a user question and provide an answer.
     """
     question = state.get("question", "")
-    
+
     if not question:
         return {"answer": "Please provide a question to answer."}
-    
+
     # Try to get LLM response
     try:
         prompt = f"Please answer this question clearly and concisely: {question}"
@@ -37,7 +37,7 @@ def answer_question(state):
         return {"answer": response.strip()}
     except Exception as e:
         print(f"LLM unavailable: {e}")
-    
+
     # Fallback responses for common questions
     fallback_answers = {
         "hello": "Hello! How can I help you today?",
@@ -47,13 +47,13 @@ def answer_question(state):
         "goodbye": "Goodbye! Have a great day!",
         "bye": "Bye! Come back anytime!"
     }
-    
+
     # Simple keyword matching for fallback
     question_lower = question.lower().strip()
     for key, answer in fallback_answers.items():
         if key in question_lower:
             return {"answer": answer}
-    
+
     # Default fallback
     return {
         "answer": "I'm sorry, I don't have an answer for that question. "
@@ -64,16 +64,16 @@ def main():
     """Demonstrate the simple Q&A system."""
     print("GraphFlow Simple Q&A System")
     print("========================================")
-    
+
     # Build the graph
     graph = StateGraph()
     graph.add_node("answer", answer_question)
     graph.set_entry_point("answer")
     graph.add_edge("answer", "__end__")
-    
+
     # Compile the application
     app = graph.compile()
-    
+
     # Test questions
     test_questions = [
         "Hello there!",
@@ -82,11 +82,11 @@ def main():
         "What is machine learning?",
         "Goodbye!"
     ]
-    
+
     for question in test_questions:
         print(f"\nQuestion: {question}")
         print("-" * 40)
-        
+
         try:
             result = app.invoke({"question": question})
             print(f"Answer: {result.get('answer', 'No answer provided')}")

@@ -62,10 +62,10 @@ Add a processing node to the graph.
 def node_function(state: dict) -> Union[dict, Command]:
     """
     Process state and return updates or routing commands.
-    
+
     Args:
         state: Current workflow state
-        
+
     Returns:
         dict: State updates to apply
         Command: State updates + routing instructions
@@ -366,11 +366,11 @@ Create custom merge logic with reducer functions:
 def custom_reducer(current_value, new_value):
     """
     Custom state merge logic.
-    
+
     Args:
         current_value: Existing state value
         new_value: New value to merge
-        
+
     Returns:
         Merged value
     """
@@ -551,7 +551,7 @@ def timed_node(state):
     start = time.time()
     result = process_data(state)
     duration = time.time() - start
-    
+
     return {
         'result': result,
         'performance': {
@@ -573,7 +573,7 @@ import time
 
 def create_advanced_workflow():
     """Complete example with all API features"""
-    
+
     # Create graph with state reducers
     graph = StateGraph(state_reducers={
         'results': 'extend',        # Collect parallel results
@@ -582,17 +582,17 @@ def create_advanced_workflow():
         'processing_log': 'extend', # Execution log
         'errors': 'extend'          # Error collection
     })
-    
+
     def input_validator(state):
         """Validate input and route accordingly"""
         data = state.get('input_data', '')
-        
+
         if not data:
             return Command(
                 update={'errors': ['No input data provided']},
                 goto='error_handler'
             )
-        
+
         return Command(
             update={
                 'validated_input': data,
@@ -600,17 +600,17 @@ def create_advanced_workflow():
             },
             goto=['processor_a', 'processor_b', 'processor_c']  # Fan-out
         )
-    
+
     def processor(name, delay=0.1):
         """Parallel processor with timing"""
         def process_func(state):
             start_time = time.time()
-            
+
             # Simulate processing
             time.sleep(delay)
             input_data = state.get('validated_input', '')
             result = f'{name} processed: {input_data}'
-            
+
             return {
                 'results': [result],
                 'metadata': {
@@ -620,13 +620,13 @@ def create_advanced_workflow():
                 'processing_log': [f'{name} completed']
             }
         return process_func
-    
+
     def result_combiner(state):
         """Combine parallel results"""
         results = state.get('results', [])
         metadata = state.get('metadata', {})
         logs = state.get('processing_log', [])
-        
+
         return {
             'final_status': 'completed',
             'processing_log': ['Result combination completed'],
@@ -637,7 +637,7 @@ def create_advanced_workflow():
                 'combined_results': results
             }
         }
-    
+
     def error_handler(state):
         """Handle any errors that occurred"""
         errors = state.get('errors', [])
@@ -648,7 +648,7 @@ def create_advanced_workflow():
                 'errors': errors
             }
         }
-    
+
     # Build the graph
     (graph
      .add_node('validator', input_validator)
@@ -658,26 +658,26 @@ def create_advanced_workflow():
      .add_node('combiner', result_combiner)
      .add_node('error_handler', error_handler)
      .set_entry_point('validator')
-     
+
      # Fan-in: all processors → combiner
      .add_edge('processor_a', 'combiner')
      .add_edge('processor_b', 'combiner')
      .add_edge('processor_c', 'combiner'))
-    
+
     return graph.compile()
 
 # Usage example
 if __name__ == "__main__":
     # Create and test the workflow
     workflow = create_advanced_workflow()
-    
+
     # Test with valid input
     result = workflow.invoke({'input_data': 'test data'})
     print("✅ Success case:")
     print(f"Status: {result['final_status']}")
     print(f"Results: {len(result['summary']['combined_results'])}")
     print(f"Steps: {result['summary']['processing_steps']}")
-    
+
     # Test with invalid input
     error_result = workflow.invoke({})  # No input_data
     print("\n❌ Error case:")

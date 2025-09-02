@@ -37,7 +37,7 @@ graph = StateGraph(state_reducers={
 def start_work(state):
     """Entry point that fans out to parallel workers"""
     print("🚀 Starting parallel work...")
-    
+
     return Command(
         update={'started_at': time.time()},
         goto=['worker_a', 'worker_b', 'worker_c']  # Fan-out to 3 parallel workers!
@@ -47,7 +47,7 @@ def worker_a(state):
     """Worker A - does some processing"""
     print("⚙️ Worker A processing...")
     time.sleep(0.5)  # Simulate work
-    
+
     return {
         'results': ['Worker A completed task'],
         'timings': [{'worker_a': time.time()}]
@@ -57,7 +57,7 @@ def worker_b(state):
     """Worker B - does different processing (runs in parallel with A and C)"""
     print("🔧 Worker B processing...")
     time.sleep(0.3)  # Different timing
-    
+
     return {
         'results': ['Worker B completed task'],
         'timings': [{'worker_b': time.time()}]
@@ -67,7 +67,7 @@ def worker_c(state):
     """Worker C - yet another parallel process"""
     print("⚡ Worker C processing...")
     time.sleep(0.7)  # Longest task
-    
+
     return {
         'results': ['Worker C completed task'],
         'timings': [{'worker_c': time.time()}]
@@ -76,10 +76,10 @@ def worker_c(state):
 def combine_results(state):
     """Fan-in: Combines all parallel results"""
     print("🔗 Combining results from all workers...")
-    
+
     num_results = len(state.get('results', []))
     total_time = time.time() - state.get('started_at', time.time())
-    
+
     return {
         'final_report': f"Successfully processed {num_results} parallel tasks in {total_time:.2f}s",
         'status': 'completed'
@@ -93,7 +93,7 @@ def combine_results(state):
  .add_node('worker_c', worker_c)
  .add_node('combiner', combine_results)
  .set_entry_point('start')
- 
+
  # Fan-in: All workers feed into combiner
  .add_edge('worker_a', 'combiner')
  .add_edge('worker_b', 'combiner')
@@ -114,7 +114,7 @@ print(f"\n✅ {result['final_report']}")
 print(f"Results collected: {result.get('results', [])}")
 ```
 
-## � Example 2: Conditional Routing
+## Example 2: Conditional Routing
 
 Here's a more advanced example with conditional logic:
 
@@ -123,11 +123,11 @@ from graphflow import StateGraph, Command
 
 def create_data_processor():
     graph = StateGraph(state_reducers={'outputs': 'extend'})
-    
+
     def classifier(state):
         """Route to different processors based on data type"""
         data_type = state.get('data_type', 'unknown')
-        
+
         if data_type == 'text':
             return Command(
                 update={'classification': 'text_processing'},
@@ -143,32 +143,32 @@ def create_data_processor():
                 update={'classification': 'generic_processing'},
                 goto='generic_processor'                      # Single fallback
             )
-    
+
     def nlp_processor(state):
         return {'outputs': ['NLP analysis complete']}
-    
+
     def sentiment_analyzer(state):
         return {'outputs': ['Sentiment: positive (0.8)']}
-    
+
     def object_detector(state):
         return {'outputs': ['Found 3 objects: cat, tree, car']}
-    
+
     def image_enhancer(state):
         return {'outputs': ['Image enhanced: +20% quality']}
-    
+
     def generic_processor(state):
         return {'outputs': ['Generic processing complete']}
-    
+
     def final_aggregator(state):
         """Combines results regardless of path taken"""
         outputs = state.get('outputs', [])
         classification = state.get('classification', 'unknown')
-        
+
         return {
             'summary': f"{classification}: {len(outputs)} tasks completed",
             'all_outputs': outputs
         }
-    
+
     # Build the graph
     (graph
      .add_node('classifier', classifier)
@@ -179,14 +179,14 @@ def create_data_processor():
      .add_node('generic_processor', generic_processor)
      .add_node('aggregator', final_aggregator)
      .set_entry_point('classifier')
-     
+
      # All paths lead to aggregator
      .add_edge('nlp_processor', 'aggregator')
      .add_edge('sentiment_analyzer', 'aggregator')
      .add_edge('object_detector', 'aggregator')
      .add_edge('image_enhancer', 'aggregator')
      .add_edge('generic_processor', 'aggregator'))
-    
+
     return graph.compile()
 
 # Test different input types
@@ -227,7 +227,7 @@ You now have the basics! Explore more advanced topics:
      .add_edge('task2', 'combiner')
      .add_edge('task3', 'combiner')
      .add_edge('task4', 'combiner'))
-    
+
     return graph
 
 # Test parallel execution

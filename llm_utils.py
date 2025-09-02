@@ -9,12 +9,12 @@ Supports multiple LLM providers:
 
 Usage:
     from graphflow import call_llm, configure_llm
-    
+
     # Configure your preferred provider
     configure_llm("openai", api_key="your-key", model="gpt-4")
     configure_llm("anthropic", api_key="your-key", model="claude-3-sonnet")
     configure_llm("ollama", base_url="http://localhost:11434", model="llama2")
-    
+
     # Then use in your nodes
     def my_node(state):
         response = call_llm("What is the meaning of life?")
@@ -51,7 +51,7 @@ def configure_llm(
 ):
     """
     Configure the LLM provider and settings.
-    
+
     Args:
         provider: "openai", "anthropic", "ollama", or "custom"
         api_key: API key (not needed for Ollama)
@@ -62,7 +62,7 @@ def configure_llm(
         timeout: Request timeout in seconds
     """
     global _llm_config
-    
+
     _llm_config.provider = provider.lower()
     _llm_config.api_key = api_key or os.environ.get(f"{provider.upper()}_API_KEY")
     _llm_config.base_url = base_url
@@ -70,7 +70,7 @@ def configure_llm(
     _llm_config.temperature = temperature
     _llm_config.max_tokens = max_tokens
     _llm_config.timeout = timeout
-    
+
     # Set default base URLs
     if not _llm_config.base_url:
         if provider == "ollama":
@@ -88,32 +88,32 @@ def call_llm(
 ) -> str:
     """
     Call the configured LLM with a prompt.
-    
+
     Args:
         prompt: Either a string or list of message dicts
         model: Override the configured model
         temperature: Override the configured temperature
         max_tokens: Override the configured max_tokens
-        
+
     Returns:
         The LLM response as a string
-        
+
     Raises:
         Exception: If the LLM call fails
     """
     config = _llm_config
-    
+
     # Use overrides if provided
     model = model or config.model
     temperature = temperature or config.temperature
     max_tokens = max_tokens or config.max_tokens
-    
+
     # Convert string prompt to messages format
     if isinstance(prompt, str):
         messages = [{"role": "user", "content": prompt}]
     else:
         messages = prompt
-    
+
     try:
         if config.provider == "openai":
             return _call_openai(messages, model, temperature, max_tokens)
@@ -125,7 +125,7 @@ def call_llm(
             return _call_custom_openai_compatible(messages, model, temperature, max_tokens)
         else:
             raise ValueError(f"Unsupported provider: {config.provider}")
-            
+
     except Exception as e:
         raise Exception(f"LLM call failed: {str(e)}")
 
@@ -135,23 +135,23 @@ def _call_openai(messages: List[Dict], model: str, temperature: float, max_token
         from openai import OpenAI
     except ImportError:
         raise ImportError("OpenAI package not installed. Run: pip install openai")
-    
+
     if not _llm_config.api_key:
         raise ValueError("OpenAI API key not provided. Set OPENAI_API_KEY environment variable or use configure_llm()")
-    
+
     client = OpenAI(
         api_key=_llm_config.api_key,
         base_url=_llm_config.base_url,
         timeout=_llm_config.timeout
     )
-    
+
     response = client.chat.completions.create(
         model=model,
         messages=messages,
         temperature=temperature,
         max_tokens=max_tokens
     )
-    
+
     return response.choices[0].message.content
 
 def _call_anthropic(messages: List[Dict], model: str, temperature: float, max_tokens: int) -> str:
@@ -160,39 +160,39 @@ def _call_anthropic(messages: List[Dict], model: str, temperature: float, max_to
         from anthropic import Anthropic
     except ImportError:
         raise ImportError("Anthropic package not installed. Run: pip install anthropic")
-    
+
     if not _llm_config.api_key:
         raise ValueError("Anthropic API key not provided. Set ANTHROPIC_API_KEY environment variable or use configure_llm()")
-    
+
     client = Anthropic(
         api_key=_llm_config.api_key,
         timeout=_llm_config.timeout
     )
-    
+
     # Convert messages format for Anthropic
     if messages[0]["role"] == "system":
         system_message = messages[0]["content"]
         messages = messages[1:]
     else:
         system_message = None
-    
+
     kwargs = {
         "model": model,
         "max_tokens": max_tokens,
         "temperature": temperature,
         "messages": messages
     }
-    
+
     if system_message:
         kwargs["system"] = system_message
-    
+
     response = client.messages.create(**kwargs)
     return response.content[0].text
 
 def _call_ollama(messages: List[Dict], model: str, temperature: float, max_tokens: int) -> str:
     """Call Ollama API (local)"""
     url = f"{_llm_config.base_url}/api/chat"
-    
+
     payload = {
         "model": model,
         "messages": messages,
@@ -202,47 +202,47 @@ def _call_ollama(messages: List[Dict], model: str, temperature: float, max_token
         },
         "stream": False
     }
-    
+
     response = requests.post(
         url, 
         json=payload, 
         timeout=_llm_config.timeout
     )
-    
+
     if response.status_code != 200:
         raise Exception(f"Ollama API error: {response.status_code} - {response.text}")
-    
+
     result = response.json()
     return result["message"]["content"]
 
 def _call_custom_openai_compatible(messages: List[Dict], model: str, temperature: float, max_tokens: int) -> str:
     """Call custom OpenAI-compatible API"""
     url = f"{_llm_config.base_url}/chat/completions"
-    
+
     headers = {
         "Content-Type": "application/json"
     }
-    
+
     if _llm_config.api_key:
         headers["Authorization"] = f"Bearer {_llm_config.api_key}"
-    
+
     payload = {
         "model": model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens
     }
-    
+
     response = requests.post(
         url,
         headers=headers,
         json=payload,
         timeout=_llm_config.timeout
     )
-    
+
     if response.status_code != 200:
         raise Exception(f"API error: {response.status_code} - {response.text}")
-    
+
     result = response.json()
     return result["choices"][0]["message"]["content"]
 
@@ -255,13 +255,13 @@ async def call_llm_async(
 ) -> str:
     """
     Async version of call_llm.
-    
+
     Note: Currently runs sync calls in thread pool.
     For true async, use provider-specific async clients.
     """
     import asyncio
     import concurrent.futures
-    
+
     loop = asyncio.get_event_loop()
     with concurrent.futures.ThreadPoolExecutor() as executor:
         return await loop.run_in_executor(
@@ -318,14 +318,14 @@ if __name__ == "__main__":
     # Test the LLM utilities
     print("GraphFlow LLM Utilities Test")
     print("=" * 40)
-    
+
     # Show current config
     config = get_llm_config()
     print(f"Provider: {config['provider']}")
     print(f"Model: {config['model']}")
     print(f"Has API Key: {config['has_api_key']}")
     print()
-    
+
     # Test call (will use whatever is configured)
     try:
         response = ask_llm("What is 2+2? Answer briefly.")

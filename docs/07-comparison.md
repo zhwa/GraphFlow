@@ -63,19 +63,19 @@ import time
 
 def create_parallel_test():
     graph = StateGraph(state_reducers={'results': 'extend'})
-    
+
     def distribute(state):
         return Command(goto=['task1', 'task2', 'task3', 'task4'])
-    
+
     def task(name):
         def task_func(state):
             time.sleep(0.5)  # Simulate work
             return {'results': [f'{name}_completed']}
         return task_func
-    
+
     def combine(state):
         return {'final': f"Completed {len(state['results'])} tasks"}
-    
+
     (graph
      .add_node('distribute', distribute)
      .add_node('task1', task('Task1'))
@@ -88,7 +88,7 @@ def create_parallel_test():
      .add_edge('task2', 'combine')
      .add_edge('task3', 'combine')
      .add_edge('task4', 'combine'))
-    
+
     return graph.compile()
 
 # Test execution time
@@ -111,24 +111,24 @@ class State(TypedDict):
 
 def create_langgraph_test():
     graph = StateGraph(State)
-    
+
     def task(name):
         def task_func(state):
             time.sleep(0.5)  # Same work
             return {"results": state["results"] + [f"{name}_completed"]}
         return task_func
-    
+
     graph.add_node("task1", task("Task1"))
     graph.add_node("task2", task("Task2"))
     graph.add_node("task3", task("Task3"))
     graph.add_node("task4", task("Task4"))
-    
+
     # Sequential execution only
     graph.set_entry_point("task1")
     graph.add_edge("task1", "task2")
     graph.add_edge("task2", "task3")
     graph.add_edge("task3", "task4")
-    
+
     return graph.compile()
 
 # Test execution time
@@ -217,28 +217,28 @@ class AdvancedState(TypedDict):
 ```python
 def create_fanout_workflow():
     graph = StateGraph(state_reducers={'analysis': 'extend'})
-    
+
     def distribute_work(state):
         # Fan-out: One node → Multiple parallel nodes
         return Command(
             update={'status': 'analyzing'},
             goto=['sentiment_analyzer', 'entity_extractor', 'topic_classifier']
         )
-    
+
     def sentiment_analyzer(state):
         return {'analysis': [{'type': 'sentiment', 'result': 'positive'}]}
-    
+
     def entity_extractor(state):
         return {'analysis': [{'type': 'entities', 'result': ['Person', 'Org']}]}
-    
+
     def topic_classifier(state):
         return {'analysis': [{'type': 'topics', 'result': ['technology']}]}
-    
+
     def combine_analysis(state):
         # Fan-in: Multiple parallel nodes → One node
         analyses = state.get('analysis', [])
         return {'final_report': f'Completed {len(analyses)} analyses'}
-    
+
     # Natural fan-out/fan-in structure
     (graph
      .add_node('distributor', distribute_work)
@@ -247,12 +247,12 @@ def create_fanout_workflow():
      .add_node('topic_classifier', topic_classifier)
      .add_node('combiner', combine_analysis)
      .set_entry_point('distributor')
-     
+
      # All analyzers feed into combiner (fan-in)
      .add_edge('sentiment_analyzer', 'combiner')
      .add_edge('entity_extractor', 'combiner')
      .add_edge('topic_classifier', 'combiner'))
-    
+
     return graph.compile()
 
 # Executes all analyzers in parallel automatically!
@@ -272,43 +272,43 @@ class AnalysisState(TypedDict):
 
 def create_langgraph_fanout():
     graph = StateGraph(AnalysisState)
-    
+
     def distribute_work(state):
         # Complex routing logic required
         return {
             "next_step": "analyze",
             "analyses": []
         }
-    
+
     def sentiment_analyzer(state):
         return {
             "analyses": [{"type": "sentiment", "result": "positive"}]
         }
-    
+
     def entity_extractor(state):
         return {
             "analyses": [{"type": "entities", "result": ["Person", "Org"]}]
         }
-    
+
     def topic_classifier(state):
         return {
             "analyses": [{"type": "topics", "result": ["technology"]}]
         }
-    
+
     def should_continue(state) -> Literal["sentiment", "entities", "topics", "end"]:
         # Complex conditional logic needed for fan-out
         # This is simplified - real implementation is much more complex
         if len(state["analyses"]) < 3:
             return "sentiment"  # This doesn't actually implement parallel execution
         return "end"
-    
+
     # Complex graph structure required
     graph.add_node("distribute", distribute_work)
     graph.add_node("sentiment", sentiment_analyzer)
     graph.add_node("entities", entity_extractor)  
     graph.add_node("topics", topic_classifier)
     graph.add_node("combine", lambda state: {"final": "done"})
-    
+
     graph.set_entry_point("distribute")
     graph.add_conditional_edges("distribute", should_continue, {
         "sentiment": "sentiment",
@@ -317,7 +317,7 @@ def create_langgraph_fanout():
         "end": "combine"
     })
     # Still executes sequentially, not in parallel!
-    
+
     return graph.compile()
 ```
 
@@ -479,7 +479,7 @@ class State(TypedDict):
 
 def chat_node(state: State) -> Command:
     response = f"You said: {state['user_input']}"
-    
+
     if "bye" in state["user_input"].lower():
         return Command(
             update={"messages": state["messages"] + [response]},
@@ -510,7 +510,7 @@ class State(TypedDict):
 def chat_node(state: State) -> Command:
     last_message = state["messages"][-1]
     response = AIMessage(content=f"You said: {last_message.content}")
-    
+
     if "bye" in last_message.content.lower():
         return Command(
             update={"messages": [response]},

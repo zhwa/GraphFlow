@@ -32,7 +32,7 @@ def setup_llm_node(state: ChatState) -> Command:
     This shows auto-detection of available providers.
     """
     print("🔧 Configuring LLM provider...")
-    
+
     # Try to configure LLM based on environment
     if os.environ.get("OPENAI_API_KEY"):
         configure_llm("openai", model="gpt-4")
@@ -54,13 +54,13 @@ def setup_llm_node(state: ChatState) -> Command:
                 update={"should_continue": False},
                 goto=END
             )
-    
+
     # Show current configuration
     config = get_llm_config()
     print(f"   Provider: {config['provider']}")
     print(f"   Model: {config['model']}")
     print()
-    
+
     return Command(
         update={"should_continue": True},
         goto="get_input"
@@ -75,9 +75,9 @@ def get_user_input_node(state: ChatState) -> Command:
         conversation = []
     else:
         conversation = state["conversation"]
-    
+
     user_input = input("\n💬 You: ").strip()
-    
+
     if user_input.lower() in ['quit', 'exit', 'bye', '']:
         return Command(
             update={
@@ -86,10 +86,10 @@ def get_user_input_node(state: ChatState) -> Command:
             },
             goto="goodbye_node"
         )
-    
+
     # Add user message to conversation
     conversation.append({"role": "user", "content": user_input})
-    
+
     return Command(
         update={
             "user_input": user_input,
@@ -102,14 +102,14 @@ def get_user_input_node(state: ChatState) -> Command:
 def call_llm_node(state: ChatState) -> Command:
     """Call the configured LLM"""
     print("🧠 Thinking...")
-    
+
     try:
         # Use the conversation history for context
         response = call_llm(state["conversation"])
-        
+
         # Add assistant response to conversation
         conversation = state["conversation"] + [{"role": "assistant", "content": response}]
-        
+
         return Command(
             update={
                 "llm_response": response,
@@ -117,7 +117,7 @@ def call_llm_node(state: ChatState) -> Command:
             },
             goto="display_response_node"
         )
-        
+
     except Exception as e:
         error_msg = f"Sorry, I encountered an error: {str(e)}"
         return Command(
@@ -129,7 +129,7 @@ def display_response_node(state: ChatState) -> Command:
     """Display the LLM response"""
     response = state["llm_response"]
     print(f"🤖 Assistant: {response}")
-    
+
     return Command(
         update={},
         goto="get_input"
@@ -138,37 +138,37 @@ def display_response_node(state: ChatState) -> Command:
 def goodbye_node(state: ChatState) -> Command:
     """Say goodbye"""
     print("\n👋 Thanks for chatting! Goodbye!")
-    
+
     # Show conversation summary
     if state.get("conversation"):
         print(f"\n📊 Conversation Summary:")
         print(f"   Total messages: {len(state['conversation'])}")
         user_messages = [msg for msg in state['conversation'] if msg['role'] == 'user']
         print(f"   Your messages: {len(user_messages)}")
-    
+
     return Command(update={}, goto=END)
 
 def main():
     """Run the LLM chat example"""
     print("🚀 GraphFlow LLM Integration Example")
     print("=" * 50)
-    
+
     # Create the graph
     graph = StateGraph(ChatState)
-    
+
     # Add nodes
     graph.add_node("setup_llm", setup_llm_node)
     graph.add_node("get_input", get_user_input_node)
     graph.add_node("call_llm_node", call_llm_node)
     graph.add_node("display_response_node", display_response_node)
     graph.add_node("goodbye_node", goodbye_node)
-    
+
     # Set entry point
     graph.set_entry_point("setup_llm")
-    
+
     # Compile and run
     app = graph.compile()
-    
+
     # Initialize state
     initial_state = {
         "user_input": "",
@@ -176,11 +176,11 @@ def main():
         "llm_response": "",
         "should_continue": True
     }
-    
+
     try:
         final_state = app.invoke(initial_state)
         print(f"\n✅ Chat session completed!")
-        
+
     except KeyboardInterrupt:
         print(f"\n\n👋 Chat interrupted by user. Goodbye!")
     except Exception as e:
@@ -190,29 +190,29 @@ def demo_provider_switching():
     """Demo showing how to switch between different LLM providers"""
     print("\n🔄 LLM Provider Switching Demo")
     print("=" * 40)
-    
+
     providers = [
         ("openai", "gpt-3.5-turbo"),
         ("anthropic", "claude-3-haiku-20240307"),
         ("ollama", "llama2")
     ]
-    
+
     test_prompt = "What is 2+2? Answer in exactly 3 words."
-    
+
     for provider, model in providers:
         print(f"\n🧪 Testing {provider} with {model}...")
-        
+
         try:
             configure_llm(provider, model=model)
             config = get_llm_config()
-            
+
             if not config["has_api_key"] and provider != "ollama":
                 print(f"   ⏭️  Skipping {provider} (no API key)")
                 continue
-                
+
             response = call_llm(test_prompt)
             print(f"   ✅ Response: {response}")
-            
+
         except Exception as e:
             print(f"   ❌ Failed: {str(e)}")
 
@@ -221,9 +221,9 @@ if __name__ == "__main__":
     print("Choose an option:")
     print("1. Interactive LLM Chat (default)")
     print("2. Provider Switching Demo")
-    
+
     choice = input("\nEnter choice (1 or 2): ").strip()
-    
+
     if choice == "2":
         demo_provider_switching()
     else:

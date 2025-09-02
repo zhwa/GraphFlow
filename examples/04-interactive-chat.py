@@ -46,7 +46,7 @@ def setup_llm_node(state: ChatState) -> Command:
     Configure LLM provider based on available credentials.
     """
     print("🔧 Setting up LLM provider...")
-    
+
     # Try to auto-configure based on environment
     if os.environ.get("OPENAI_API_KEY"):
         configure_llm("openai", model="gpt-4")
@@ -71,12 +71,12 @@ def setup_llm_node(state: ChatState) -> Command:
                 update={"should_continue": False},
                 goto=END
             )
-    
+
     config = get_llm_config()
     print(f"   Provider: {config['provider']}")
     print(f"   Model: {config['model']}")
     print("-" * 50)
-    
+
     return Command(
         update={"should_continue": True},
         goto="get_input"
@@ -85,18 +85,17 @@ def setup_llm_node(state: ChatState) -> Command:
 def get_user_input(state: ChatState) -> Command:
     """
     Get input from the user and decide whether to continue.
-    
-    
+
     """
     # Initialize on first run
     if state["turn_count"] == 0:
         print("Welcome to GraphFlow Chat with Real LLM!")
         print("Type 'exit', 'quit', or 'bye' to end the conversation.")
         print("-" * 50)
-    
+
     # Get user input
     user_input = input("\nYou: ").strip()
-    
+
     # Check for exit conditions
     if user_input.lower() in ['exit', 'quit', 'goodbye', 'bye']:
         return Command(
@@ -106,14 +105,14 @@ def get_user_input(state: ChatState) -> Command:
             },
             goto="farewell"
         )
-    
+
     if not user_input:
         print("Please enter a message.")
         return Command(
             update={"should_continue": True},
             goto="get_input"  # Loop back for valid input
         )
-    
+
     # Valid input - proceed to generate response
     return Command(
         update={
@@ -127,45 +126,44 @@ def get_user_input(state: ChatState) -> Command:
 def generate_response(state: ChatState) -> Command:
     """
     Generate assistant response using real LLM.
-    
-    
+
     """
     print("🧠 Thinking...")
-    
+
     user_input = state["user_input"]
     messages = state["messages"]
-    
+
     # Build conversation context for LLM
     conversation_messages = []
-    
+
     # Add system message for context
     conversation_messages.append({
         "role": "system", 
         "content": "You are a helpful AI assistant. Be conversational and friendly."
     })
-    
+
     # Add conversation history
     conversation_messages.extend(messages)
-    
+
     # Add current user input
     conversation_messages.append({
         "role": "user",
         "content": user_input
     })
-    
+
     try:
         # Call the real LLM
         response = call_llm(conversation_messages)
-        
+
         return Command(
             update={"assistant_response": response},
             goto="update_conversation"
         )
-        
+
     except Exception as e:
         error_response = f"Sorry, I encountered an error: {str(e)}"
         print(f"⚠️  LLM Error: {e}")
-        
+
         return Command(
             update={"assistant_response": error_response},
             goto="update_conversation"
@@ -174,18 +172,17 @@ def generate_response(state: ChatState) -> Command:
 def update_conversation(state: ChatState) -> Command:
     """
     Update conversation history and decide next action.
-    
-    
+
     """
     # Add messages to history
     new_messages = state["messages"] + [
         {"role": "user", "content": state["user_input"]},
         {"role": "assistant", "content": state["assistant_response"]}
     ]
-    
+
     # Display the response
     print(f"Assistant: {state['assistant_response']}")
-    
+
     # Continue the conversation
     return Command(
         update={
@@ -209,28 +206,28 @@ def farewell(state: ChatState) -> dict:
 def build_chat_graph():
     """Build the interactive chat graph with LLM integration."""
     graph = StateGraph(ChatState)
-    
+
     # Add nodes
     graph.add_node("setup_llm", setup_llm_node)
     graph.add_node("get_input", get_user_input)
     graph.add_node("generate_response", generate_response)
     graph.add_node("update_conversation", update_conversation)
     graph.add_node("farewell", farewell)
-    
+
     # Set up flow
     graph.add_edge("generate_response", "update_conversation")
     graph.set_entry_point("setup_llm")
-    
+
     return graph.compile()
 
 def main():
     """Main function - start the chat session with real LLM."""
     print("🤖 GraphFlow Interactive Chat with Real LLM")
     print("=" * 50)
-    
+
     # Build the chat graph
     chat_app = build_chat_graph()
-    
+
     # Initialize conversation state
     initial_state = {
         "messages": [],
@@ -239,7 +236,7 @@ def main():
         "should_continue": True,
         "turn_count": 0
     }
-    
+
     # Start the conversation
     try:
         chat_app.invoke(initial_state)
