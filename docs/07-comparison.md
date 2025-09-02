@@ -8,10 +8,7 @@
 |--------|-------------|-----------|
 | **Philosophy** | Simple, lightweight, zero-dependency parallel execution | Full-featured LangChain ecosystem integration |
 | **Complexity** | Minimal learning curve, 2 files, <500 LOC | Extensive framework, many dependencies |
-| **Parallel Execution** | True parallel execution with state reducers | Sequential execution with checkpointing |
 | **Dependencies** | Zero dependencies (pure Python) | Heavy LangChain ecosystem dependencies |
-| **State Management** | Built-in parallel state merging with reducers | Manual state management |
-| **Performance** | 4x speedup with parallel execution | No parallel performance benefits |
 | **Use Case** | Lightweight parallel workflows, AI agents | Complex LangChain-integrated applications |
 
 ## 🔍 Detailed Comparison
