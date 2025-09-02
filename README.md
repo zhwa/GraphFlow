@@ -12,7 +12,6 @@ Get running in under 2 minutes:
 git clone https://github.com/zhwa/GraphFlow.git
 cd GraphFlow
 python examples/01-test-and-examples.py  # Verify installation & run tests
-python examples/09-parallel-execution-demo.py  # See it in action
 ```
 
 ## ⚡ What Makes GraphFlow Powerful
@@ -167,7 +166,5 @@ See [GraphFlow vs LangGraph](docs/08-comparison.md)
 1. **Learn the fundamentals**: [Core Concepts](docs/01-core-concepts.md)
 2. **Build your first parallel graph**: [Quick Start Guide](docs/02-quick-start.md)  
 3. **Explore patterns**: [Parallel Patterns](docs/04-parallel-patterns.md)
-4. **See it in action**: Run `python examples/09-parallel-execution-demo.py`
 
 **Transform your AI agents with true parallel execution!**
-

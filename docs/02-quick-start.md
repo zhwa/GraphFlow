@@ -13,7 +13,7 @@ GraphFlow has **zero dependencies** - just Python 3.7+: Start Guide
 GraphFlow has **zero dependencies** - just Python 3.7+:
 
 ```bash
-git clone <your-repository>
+git clone https://github.com/zhwa/GraphFlow.git
 cd GraphFlow
 python examples/01-test-and-examples.py  # Verify everything works
 ```

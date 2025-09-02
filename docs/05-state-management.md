@@ -498,6 +498,7 @@ def validated_reducer(current, new):
 **Master state management, and you'll build robust parallel workflows that never lose data!** 🎯
     # All data accessible from state
     # Updates returned as dict
+```python
     return {
         "conversation_history": state["conversation_history"] + [state["user_input"]],
         "user_context": {**state["user_context"], "last_input": state["user_input"]},
@@ -1150,7 +1151,3 @@ def well_designed_processor(state):
         }
     }
 ```
-
----
-
-**Next: [Architecture Guide →](04-architecture.md)**
