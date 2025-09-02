@@ -12,7 +12,7 @@ from a linear executor into a true graph traversal system supporting:
 import asyncio
 from collections import defaultdict, deque
 from copy import deepcopy
-from typing import Dict, Any, List, Set, Callable, Optional, Union, Tuple
+from typing import Dict, Any, List, Set, Callable, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -20,10 +20,10 @@ logger = logging.getLogger(__name__)
 class State(dict):
     """A state object with reducer logic for field-wise merging."""
     
-    def __init__(self, initial_data: Dict[str, Any] = None, reducers: Dict[str, Callable] = None):
+    def __init__(self, initial_data: Optional[Dict[str, Any]] = None, reducers: Optional[Dict[str, Callable]] = None):
         super().__init__(initial_data or {})
         self.reducers = reducers or {}
-        self._last_command = None  # For tracking Command routing
+        self._last_command: Any = None  # For tracking Command routing
         self._set_default_reducers()
     
     def _set_default_reducers(self):
@@ -75,7 +75,7 @@ class State(dict):
             return result
         return new
     
-    def merge(self, update: Dict[str, Any], field_reducers: Dict[str, str] = None) -> 'State':
+    def merge(self, update: Dict[str, Any], field_reducers: Optional[Dict[str, str]] = None) -> 'State':
         """
         Merge update into state using field-specific reducers.
         
@@ -119,7 +119,7 @@ class State(dict):
 class NodeExecution:
     """Represents a node execution with its state and metadata."""
     
-    def __init__(self, node_name: str, state: State, predecessors: Set[str] = None):
+    def __init__(self, node_name: str, state: 'State', predecessors: Optional[Set[str]] = None):
         self.node_name = node_name
         self.state = state
         self.predecessors = predecessors or set()
@@ -165,7 +165,6 @@ class ParallelGraphExecutor:
     def get_successors(self, node_name: str, state: State) -> List[str]:
         """Get successor nodes for a given node and state."""
         successors = []
-        
         # Check for Command-based routing in state
         if hasattr(state, '_last_command') and state._last_command:
             command = state._last_command
@@ -174,7 +173,11 @@ class ParallelGraphExecutor:
                     if command.goto != "__end__":
                         successors.append(command.goto)
                 elif isinstance(command.goto, list):
-                    successors.extend([g for g in command.goto if g != "__end__"])
+                    # Only add string node names, skip Send objects
+                    for g in command.goto:
+                        if isinstance(g, str) and g != "__end__":
+                            successors.append(g)
+                        # If Send, skip (or handle as needed)
                 # Clear the command after processing
                 state._last_command = None
                 return successors
@@ -262,7 +265,7 @@ class ParallelGraphExecutor:
         return execution
     
     async def ainvoke(self, initial_state: Dict[str, Any], 
-                     field_reducers: Dict[str, str] = None) -> State:
+                     field_reducers: Optional[Dict[str, str]] = None) -> State:
         """
         Execute the graph asynchronously with parallel node execution.
         
@@ -274,13 +277,17 @@ class ParallelGraphExecutor:
             Final state after graph execution
         """
         # Initialize state
-        state = State(initial_state, self.graph.state_reducers if hasattr(self.graph, 'state_reducers') else None)
+        state = State(initial_state, self.graph.state_reducers if hasattr(self.graph, 'state_reducers') else {})
         field_reducers = field_reducers or {}
         
         # Track execution
         completed_nodes: Set[str] = set()
         active_executions: Dict[str, NodeExecution] = {}
         pending_tasks: Set[asyncio.Task] = set()
+        # NEW: Track output states for each node (for fan-in merging)
+        node_outputs: Dict[str, List[State]] = defaultdict(list)
+        # NEW: Track output results for each node (for fan-in merging)
+        node_results: Dict[str, List[Any]] = defaultdict(list)
         
         # Start with entry nodes
         entry_nodes = self.get_entry_nodes()
@@ -297,16 +304,54 @@ class ParallelGraphExecutor:
             # Start all ready nodes
             while ready_nodes and len(pending_tasks) < self.max_concurrent:
                 execution = ready_nodes.popleft()
-                
                 # Skip if already completed or active
                 if execution.node_name in completed_nodes or execution.node_name in active_executions:
                     continue
-                
+                # For fan-in: if node has multiple predecessors, merge their *results* into the state
+                preds = self.predecessors.get(execution.node_name, [])
+                if len(preds) > 1:
+                    merged_state = state.copy()
+                    pred_results = [node_results[p][-1] for p in preds if node_results[p]]
+                    # Collect all keys from all predecessor results
+                    all_keys = set()
+                    for pred_result in pred_results:
+                        if isinstance(pred_result, dict):
+                            all_keys.update(pred_result.keys())
+                    # For each key, merge values from all predecessor results
+                    for key in all_keys:
+                        # Special handling for 'results' to avoid double merging
+                        if key == 'results':
+                            # Only merge the raw results from predecessors, not from the global state
+                            values = [pr.get(key) for pr in pred_results if isinstance(pr, dict) and pr.get(key) is not None]
+                            merged_value = []
+                            for v in values:
+                                if isinstance(v, list):
+                                    merged_value.extend(v)
+                                else:
+                                    merged_value.append(v)
+                            merged_state[key] = merged_value
+                            continue
+                        values = [pr.get(key) for pr in pred_results if isinstance(pr, dict) and pr.get(key) is not None]
+                        if not values:
+                            continue  # No valid values to merge
+                        reducer_name = field_reducers.get(key)
+                        if reducer_name and reducer_name in merged_state.reducers:
+                            reducer = merged_state.reducers[reducer_name]
+                        elif key.endswith('_list') or key.endswith('_history'):
+                            reducer = merged_state.reducers['extend']
+                        elif any(isinstance(v, dict) for v in values) and isinstance(merged_state.get(key), dict):
+                            reducer = merged_state.reducers['merge']
+                        else:
+                            reducer = merged_state.reducers['set']
+                        merged_value = merged_state.get(key)
+                        for v in values:
+                            merged_value = reducer(merged_value, v)
+                        merged_state[key] = merged_value
+                    execution.state = merged_state
                 # Create and start task
                 task = asyncio.create_task(self.execute_node(execution))
                 pending_tasks.add(task)
                 active_executions[execution.node_name] = execution
-                
                 logger.debug(f"Started execution of node: {execution.node_name}")
             
             # Wait for at least one task to complete
@@ -332,6 +377,9 @@ class ParallelGraphExecutor:
                     
                     # Mark as completed
                     completed_nodes.add(node_name)
+                    # NEW: Save the output state and result for this node
+                    node_outputs[node_name].append(execution.state.copy())
+                    node_results[node_name].append(execution.result)
                     
                     # Update global state based on node result and get routing command
                     routing_command = None
@@ -353,22 +401,43 @@ class ParallelGraphExecutor:
                         if isinstance(routing_command.goto, str):
                             successors = [routing_command.goto] if routing_command.goto != "__end__" else []
                         elif isinstance(routing_command.goto, list):
-                            successors = [g for g in routing_command.goto if g != "__end__"]
+                            # Only add string node names, skip Send objects
+                            successors = [g for g in routing_command.goto if isinstance(g, str) and g != "__end__"]
                         else:
                             successors = []
                     else:
                         # Use graph topology
                         successors = self.get_successors(node_name, state)
-                    
                     for successor in successors:
                         if (successor not in completed_nodes and 
                             successor not in active_executions and
                             self.are_dependencies_met(successor, completed_nodes)):
-                            
                             ready_nodes.append(NodeExecution(successor, state.copy(), {node_name}))
                             logger.debug(f"Node {successor} is now ready to execute")
+                    # --- Ensure fan-in/finalization node is always executed ---
+                    # If this node is a predecessor to a fan-in node, and all its predecessors are done, enqueue the fan-in node
+                    for fanin_node, preds in self.predecessors.items():
+                        if len(preds) > 1 and fanin_node not in completed_nodes and fanin_node not in active_executions:
+                            if set(preds).issubset(completed_nodes):
+                                ready_nodes.append(NodeExecution(fanin_node, state.copy(), set(preds)))
+                                logger.debug(f"Fan-in node {fanin_node} is now ready to execute (forced)")
+                    # --- Ensure any successor node whose dependencies are met is always executed ---
+                    for possible_node in self.successors:
+                        if (possible_node not in completed_nodes and
+                            possible_node not in active_executions and
+                            self.are_dependencies_met(possible_node, completed_nodes)):
+                            ready_nodes.append(NodeExecution(possible_node, state.copy(), set(self.predecessors.get(possible_node, []))))
+                            logger.debug(f"Node {possible_node} is now ready to execute (forced, all deps met)")
         
         logger.info(f"Graph execution completed. Processed {len(completed_nodes)} nodes.")
+        # Merge the output of the last executed node(s) into the final state
+        # Find terminal nodes (nodes with no outgoing edges)
+        terminal_nodes = [n for n in completed_nodes if not self.successors.get(n)]
+        # Merge the output of all terminal nodes into the final state using reducer logic
+        terminal_nodes = [n for n in completed_nodes if not self.successors.get(n)]
+        terminal_results = [node_results[n][-1] for n in terminal_nodes if node_results[n]]
+        for result in terminal_results:
+            state = self._merge_node_result(state, result, field_reducers)
         return state
     
     def _merge_node_result(self, state: State, result: Any, field_reducers: Dict[str, str]) -> State:
@@ -378,7 +447,6 @@ class ParallelGraphExecutor:
             from .graphflow import Command
         except ImportError:
             from graphflow import Command
-        
         if isinstance(result, Command):
             # Store the command for routing decisions
             state._last_command = result
@@ -391,7 +459,7 @@ class ParallelGraphExecutor:
         return state
     
     def invoke(self, initial_state: Dict[str, Any], 
-              field_reducers: Dict[str, str] = None) -> State:
+              field_reducers: Optional[Dict[str, str]] = None) -> State:
         """Synchronous wrapper for graph execution."""
         return asyncio.run(self.ainvoke(initial_state, field_reducers))
 

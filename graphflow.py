@@ -14,12 +14,8 @@ import asyncio
 import copy
 import warnings
 import time
-from typing import (
-    Any, Dict, List, Callable, Union, Optional, Sequence, 
-    TypeVar, Generic, Hashable, TypedDict, get_type_hints
-)
+from typing import Any, Dict, List, Callable, Union, Optional, TypeVar, Generic, get_type_hints
 from dataclasses import dataclass
-from collections import defaultdict
 
 # Import the new execution engine
 try:

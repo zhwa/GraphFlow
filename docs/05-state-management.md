@@ -496,9 +496,9 @@ def validated_reducer(current, new):
 5. **Use custom reducers** for complex merging logic
 
 **Master state management, and you'll build robust parallel workflows that never lose data!** 🎯
+```python
     # All data accessible from state
     # Updates returned as dict
-```python
     return {
         "conversation_history": state["conversation_history"] + [state["user_input"]],
         "user_context": {**state["user_context"], "last_input": state["user_input"]},
