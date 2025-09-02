@@ -50,12 +50,23 @@ result = app.invoke(input, config=RunnableConfig(...))
 
 ### Performance Comparison
 
-#### Parallel Execution Test
+**⚠️ Performance comparisons should be taken with context:**
+- GraphFlow optimizes for **parallel execution** of independent tasks
+- LangGraph optimizes for **ecosystem integration** and production features
+- Real-world performance depends heavily on your specific use case
+- Both frameworks excel in different scenarios
+
+#### Parallel Execution Scenario
+
+**When GraphFlow May Be Faster:**
+- Multiple independent tasks that can run concurrently
+- CPU-bound operations that benefit from parallelization
+- Simple workflows without complex state management needs
 
 **Scenario:** 4 independent tasks, each taking 0.5 seconds
 
 ```python
-# GraphFlow - True Parallel Execution
+# GraphFlow - Parallel Execution Example
 import time
 
 def create_parallel_test():
@@ -73,73 +84,27 @@ def create_parallel_test():
     def combine(state):
         return {'final': f"Completed {len(state['results'])} tasks"}
 
-    (graph
-     .add_node('distribute', distribute)
-     .add_node('task1', task('Task1'))
-     .add_node('task2', task('Task2')) 
-     .add_node('task3', task('Task3'))
-     .add_node('task4', task('Task4'))
-     .add_node('combine', combine)
-     .set_entry_point('distribute')
-     .add_edge('task1', 'combine')
-     .add_edge('task2', 'combine')
-     .add_edge('task3', 'combine')
-     .add_edge('task4', 'combine'))
+    # Build graph with parallel fan-out pattern
+    # ... graph construction ...
 
     return graph.compile()
 
-# Test execution time
-start = time.time()
-app = create_parallel_test()
-result = app.invoke({})
-duration = time.time() - start
-
-print(f"GraphFlow Duration: {duration:.2f}s")  # ~0.5s (parallel)
+# Result: ~0.5s (parallel execution)
 ```
 
-```python
-# LangGraph - Sequential Execution
-from langgraph.graph import StateGraph
-from typing import TypedDict
-import time
+**Note:** LangGraph also supports parallel execution in newer versions, and the performance difference may be minimal in many real-world scenarios. The main advantage of GraphFlow is simplicity for parallel patterns, not necessarily raw speed.
 
-class State(TypedDict):
-    results: list
+#### Where LangGraph Typically Excels
 
-def create_langgraph_test():
-    graph = StateGraph(State)
+- **Complex LLM workflows** with checkpointing and persistence
+- **Production deployments** with monitoring and debugging tools  
+- **Ecosystem integration** with LangChain tools and agents
+- **Advanced features** like streaming, human-in-the-loop, and state persistence
 
-    def task(name):
-        def task_func(state):
-            time.sleep(0.5)  # Same work
-            return {"results": state["results"] + [f"{name}_completed"]}
-        return task_func
-
-    graph.add_node("task1", task("Task1"))
-    graph.add_node("task2", task("Task2"))
-    graph.add_node("task3", task("Task3"))
-    graph.add_node("task4", task("Task4"))
-
-    # Sequential execution only
-    graph.set_entry_point("task1")
-    graph.add_edge("task1", "task2")
-    graph.add_edge("task2", "task3")
-    graph.add_edge("task3", "task4")
-
-    return graph.compile()
-
-# Test execution time
-start = time.time()
-app = create_langgraph_test()
-result = app.invoke({"results": []})
-duration = time.time() - start
-
-print(f"LangGraph Duration: {duration:.2f}s")  # ~2.0s (sequential)
-```
-
-**Performance Results:**
-- **GraphFlow:** ~0.5 seconds (4x speedup)
-- **LangGraph:** ~2.0 seconds (sequential execution)
+**Performance Bottom Line:**
+- For simple parallel tasks: GraphFlow may have slight advantages due to lower overhead
+- For complex LLM workflows: LangGraph's additional features often outweigh any overhead
+- **Both frameworks are performant** - choose based on your feature requirements, not just speed
 
 ### State Management
 
@@ -428,38 +393,43 @@ pip install langgraph langchain-core langchain-community
 
 ### Performance Benchmarks
 
-**Test Setup:** 4 parallel API calls, each 500ms
+**⚠️ Important Context:** These are synthetic benchmarks for a specific parallel task scenario. Real-world performance depends heavily on your use case, and both frameworks can be performant in their intended scenarios.
 
-| Framework | Execution Time | Speedup | Memory Usage | Dependencies |
-|-----------|----------------|---------|---------------|-------------|
-| GraphFlow | 0.52s | 4x | 25MB | 0 |
-| LangGraph | 2.1s | 1x | 85MB | 20+ |
+**Test Setup:** 4 parallel API calls, each 500ms (hypothetical scenario)
+
+| Framework | Parallel Scenario | Memory Footprint | Dependencies |
+|-----------|------------------|-------------------|-------------|
+| GraphFlow | Optimized for this pattern | Lightweight (~25MB) | 0 |
+| LangGraph | Has parallel support too | Feature-rich (~85MB) | 20+ |
+
+**Key Takeaway:** Performance differences are typically small in real applications. Choose based on feature requirements, not just speed.
 
 **Code Size Comparison:**
 
-| Framework | Core Files | Lines of Code | Complexity |
-|-----------|------------|---------------|------------|
-| GraphFlow | 2 files | ~500 LOC | Simple |
-| LangGraph | 50+ files | 10,000+ LOC | Complex |
+| Framework | Core Files | Lines of Code | Focus |
+|-----------|------------|---------------|-------|
+| GraphFlow | 2 files | ~500 LOC | Simplicity & parallel patterns |
+| LangGraph | 50+ files | 10,000+ LOC | Comprehensive features |
 
 ## 🎯 Conclusion
 
 ### GraphFlow is ideal for:
-- ✅ **Performance-critical applications** requiring parallel execution
-- ✅ **Simple, focused workflows** without heavy dependencies
+- ✅ **Simple parallel workflows** with minimal setup
+- ✅ **Learning graph execution concepts**
 - ✅ **Rapid prototyping** and development
-- ✅ **Edge deployments** with resource constraints
-- ✅ **Custom AI agent architectures**
+- ✅ **Resource-constrained environments**
+- ✅ **Custom lightweight architectures**
 
 ### LangGraph is ideal for:
 - ✅ **LangChain-integrated applications**
 - ✅ **Enterprise features** like persistence and monitoring
-- ✅ **Complex sequential workflows**
 - ✅ **Production systems** needing comprehensive tooling
+- ✅ **Complex workflows** with advanced requirements
+- ✅ **Ecosystem integration** with LangChain tools
 
-**Both frameworks have their place** - choose based on your specific needs for simplicity vs. features, performance vs. ecosystem integration, and lightweight vs. comprehensive tooling.
+**Both frameworks are well-designed for their intended use cases** - choose based on your specific requirements for simplicity vs. features, independence vs. ecosystem integration, and lightweight vs. comprehensive tooling.
 
-**For most parallel AI agent workflows, GraphFlow provides the best balance of simplicity, performance, and capability.** 🚀
+**The best framework is the one that fits your specific needs, not necessarily the "fastest" one.** 🎯
 
 ## Code Examples Comparison
 
