@@ -2,12 +2,6 @@
 
 *Get up and running with GraphFlow parallel execution in 5 minutes*
 
-## Installation
-
-GraphFlow has **zero dependencies** - just Python 3.7+: Start Guide
-
-*Get up and running with GraphFlow parallel execution in 5 minutes*
-
 ## ⚡ Installation
 
 GraphFlow has **zero dependencies** - just Python 3.7+:
@@ -27,7 +21,7 @@ You should see:
 
 ## 🎯 Your First Parallel Graph
 
-Let's build a simple parallel workflow that demonstrates the key concepts:
+Let's build a simple parallel workflow that processes data with multiple workers:
 
 ```python
 from graphflow import StateGraph, Command
@@ -117,94 +111,56 @@ end_time = time.time()
 
 # 5. See the results!
 print(f"\n✅ {result['final_report']}")
-print(f"Total execution time: {end_time - start_time:.2f}s")
 print(f"Results collected: {result.get('results', [])}")
 ```
 
-**Expected Output:**
-```
-🚀 Starting parallel work...
-⚙️ Worker A processing...      # These 3 lines appear almost
-🔧 Worker B processing...      # simultaneously because they
-⚡ Worker C processing...      # run in parallel!
-🔗 Combining results from all workers...
+## � Example 2: Conditional Routing
 
-✅ Successfully processed 3 parallel tasks in 0.71s
-Total execution time: 0.71s  # Notice: NOT 1.5s (0.5+0.3+0.7)!
-Results collected: ['Worker A completed task', 'Worker B completed task', 'Worker C completed task']
-```
-
-## 🔍 What Just Happened?
-
-Let's break down the magic:
-
-### 1. **Parallel Execution** 
-Instead of running workers sequentially (1.5 seconds total), they ran **simultaneously** (~0.7 seconds - the time of the slowest worker).
-
-### 2. **Smart State Management**
-The `'extend'` reducer automatically combined results from all workers:
-```python
-# Worker A: {'results': ['Worker A completed task']}
-# Worker B: {'results': ['Worker B completed task']}  
-# Worker C: {'results': ['Worker C completed task']}
-# Final:    {'results': ['Worker A...', 'Worker B...', 'Worker C...']}
-```
-
-### 3. **Automatic Synchronization**
-The `combiner` node automatically waited for **all three** workers to complete before running.
-
-## 🔄 Example 2: Conditional Parallel Routing
-
-Let's build something more sophisticated with conditional logic:
+Here's a more advanced example with conditional logic:
 
 ```python
 from graphflow import StateGraph, Command
 
-def create_smart_processor():
+def create_data_processor():
     graph = StateGraph(state_reducers={'outputs': 'extend'})
     
     def classifier(state):
-        """Decides which parallel processing path to take"""
+        """Route to different processors based on data type"""
         data_type = state.get('data_type', 'unknown')
         
         if data_type == 'text':
             return Command(
                 update={'classification': 'text_processing'},
-                goto=['nlp_processor', 'sentiment_analyzer']  # Text-specific parallel tasks
+                goto=['nlp_processor', 'sentiment_analyzer']  # Parallel text processing
             )
         elif data_type == 'image':
             return Command(
                 update={'classification': 'image_processing'}, 
-                goto=['object_detector', 'image_enhancer']    # Image-specific parallel tasks
+                goto=['object_detector', 'image_enhancer']    # Parallel image processing
             )
         else:
             return Command(
                 update={'classification': 'generic_processing'},
-                goto='generic_processor'                      # Single fallback processor
+                goto='generic_processor'                      # Single fallback
             )
     
     def nlp_processor(state):
-        print("📝 Processing natural language...")
         return {'outputs': ['NLP analysis complete']}
     
     def sentiment_analyzer(state):
-        print("😊 Analyzing sentiment...")
         return {'outputs': ['Sentiment: positive (0.8)']}
     
     def object_detector(state):
-        print("🎯 Detecting objects...")
         return {'outputs': ['Found 3 objects: cat, tree, car']}
     
     def image_enhancer(state):
-        print("✨ Enhancing image...")
         return {'outputs': ['Image enhanced: +20% quality']}
     
     def generic_processor(state):
-        print("⚙️ Generic processing...")
         return {'outputs': ['Generic processing complete']}
     
     def final_aggregator(state):
-        """Combines results regardless of which path was taken"""
+        """Combines results regardless of path taken"""
         outputs = state.get('outputs', [])
         classification = state.get('classification', 'unknown')
         
@@ -224,7 +180,7 @@ def create_smart_processor():
      .add_node('aggregator', final_aggregator)
      .set_entry_point('classifier')
      
-     # All processing paths lead to aggregator
+     # All paths lead to aggregator
      .add_edge('nlp_processor', 'aggregator')
      .add_edge('sentiment_analyzer', 'aggregator')
      .add_edge('object_detector', 'aggregator')
@@ -233,77 +189,39 @@ def create_smart_processor():
     
     return graph.compile()
 
-# Test it with different inputs
-processor = create_smart_processor()
+# Test different input types
+processor = create_data_processor()
 
-print("=== Testing Text Processing ===")
+# Text processing (2 parallel tasks)
 result = processor.invoke({'data_type': 'text'})
-print(f"Result: {result['summary']}")
-print(f"Outputs: {result['all_outputs']}")
+print(f"Text: {result['summary']}")
 
-print("\n=== Testing Image Processing ===")
+# Image processing (2 parallel tasks)  
 result = processor.invoke({'data_type': 'image'})
-print(f"Result: {result['summary']}")
-print(f"Outputs: {result['all_outputs']}")
+print(f"Image: {result['summary']}")
 
-print("\n=== Testing Unknown Type ===")
+# Unknown type (single task)
 result = processor.invoke({'data_type': 'unknown'})
-print(f"Result: {result['summary']}")
-print(f"Outputs: {result['all_outputs']}")
+print(f"Unknown: {result['summary']}")
 ```
 
-**Expected Output:**
-```
-=== Testing Text Processing ===
-📝 Processing natural language...
-😊 Analyzing sentiment...
-Result: text_processing: 2 tasks completed
-Outputs: ['NLP analysis complete', 'Sentiment: positive (0.8)']
+## 🚀 What's Next?
 
-=== Testing Image Processing ===
-🎯 Detecting objects...
-✨ Enhancing image...
-Result: image_processing: 2 tasks completed
-Outputs: ['Found 3 objects: cat, tree, car', 'Image enhanced: +20% quality']
+You now have the basics! Explore more advanced topics:
 
-=== Testing Unknown Type ===
-⚙️ Generic processing...
-Result: generic_processing: 1 tasks completed
-Outputs: ['Generic processing complete']
-```
+- **[Core Concepts](01-core-concepts.md)** - Understand parallel execution fundamentals
+- **[Parallel Patterns](03-parallel-patterns.md)** - Common workflow patterns
+- **[State Management](04-state-management.md)** - Advanced state handling
+- **[Building Workflows](05-building-workflows.md)** - Complex real-world examples
+- **[Examples Directory](../examples/)** - More working code samples
 
-## 🏆 Performance Comparison
+## 💡 Key Points to Remember
 
-Want to see the performance difference? Let's compare parallel vs linear execution:
-
-```python
-import time
-from graphflow import StateGraph, Command
-
-def create_performance_test():
-    """Creates identical graphs for parallel vs linear comparison"""
-    
-    def start_node(state):
-        return Command(goto=['task1', 'task2', 'task3', 'task4'])
-    
-    def task(task_id, delay=0.2):
-        def task_func(state):
-            time.sleep(delay)  # Simulate work
-            return {'results': [f'Task {task_id} done']}
-        return task_func
-    
-    def combiner(state):
-        return {'final': f"Combined {len(state.get('results', []))} results"}
-    
-    graph = StateGraph(state_reducers={'results': 'extend'})
-    
-    (graph
-     .add_node('start', start_node)
-     .add_node('task1', task(1))
-     .add_node('task2', task(2))
-     .add_node('task3', task(3))
-     .add_node('task4', task(4))
-     .add_node('combiner', combiner)
+1. **Fan-out with Command**: Use `goto=['node1', 'node2', 'node3']` to trigger parallel execution
+2. **Fan-in with edges**: Multiple nodes pointing to the same target create synchronization points
+3. **State reducers**: Configure how parallel updates merge (`'extend'`, `'append'`, `'merge'`, `'set'`)
+4. **Conditional routing**: Commands can route to different nodes based on state
+5. **Zero configuration**: Parallel execution happens automatically when you use the patterns above
      .set_entry_point('start')
      .add_edge('task1', 'combiner')
      .add_edge('task2', 'combiner')
@@ -374,9 +292,9 @@ elif data_type == 'image':
 
 Now that you've built your first parallel graphs, you're ready to:
 
-1. **Learn advanced patterns**: [Parallel Patterns](04-parallel-patterns.md)
-2. **Master state management**: [State Management](05-state-management.md)  
-3. **Build complex workflows**: [Building Workflows](06-building-workflows.md)
+1. **Learn advanced patterns**: [Parallel Patterns](03-parallel-patterns.md)
+2. **Master state management**: [State Management](04-state-management.md)  
+3. **Build complex workflows**: [Building Workflows](05-building-workflows.md)
 4. **Explore real examples**: Check out the [examples/](../examples/) directory
 
 **Try modifying the examples above and see what happens!** The best way to learn GraphFlow is by experimenting. 🧪

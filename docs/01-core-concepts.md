@@ -448,13 +448,54 @@ After reading this guide, you should understand:
 5. **Dependency Management** ensures correct execution order while maximizing parallelism
 6. **Commands** provide dynamic routing with state updates in a single operation
 
+## 🏗️ How GraphFlow Works (Architecture Overview)
+
+Understanding the underlying architecture helps you build better workflows:
+
+### Linear vs Parallel Execution
+
+**Traditional (Linear):**
+```python
+# OLD: One thing at a time
+while current_node:
+    result = execute_node(current_node)  # Wait for completion
+    current_node = find_next_node()      # Then move to next
+```
+
+**GraphFlow (Parallel):**
+```python
+# NEW: Multiple things simultaneously
+ready_nodes = find_nodes_with_satisfied_dependencies()
+tasks = [execute_node(node) for node in ready_nodes]  # Start all at once
+results = await asyncio.gather(*tasks)                # Wait for all to complete
+```
+
+### Key Components
+
+1. **State Class**: Thread-safe state container with reducer-based merging
+2. **ParallelGraphExecutor**: Orchestrates concurrent node execution  
+3. **Dependency Manager**: Tracks which nodes can run when
+4. **Command System**: Dynamic routing with state updates
+
+### Execution Flow
+
+```
+1. Find entry nodes (no dependencies)
+2. Execute all ready nodes in parallel
+3. When nodes complete, merge results into shared state
+4. Find newly ready nodes (dependencies now satisfied)
+5. Repeat until no more nodes to execute
+```
+
+This architecture enables GraphFlow's **true parallelism** - multiple nodes executing simultaneously with proper synchronization.
+
 ## 🚀 What's Next?
 
 Now that you understand the core concepts, you're ready to:
 
 1. **Build your first parallel graph**: [Quick Start Guide](02-quick-start.md)
-2. **Learn common patterns**: [Parallel Patterns](04-parallel-patterns.md)  
-3. **Dive deeper into state management**: [State Management](05-state-management.md)
+2. **Learn common patterns**: [Parallel Patterns](03-parallel-patterns.md)  
+3. **Dive deeper into state management**: [State Management](04-state-management.md)
 4. **See real examples**: Check out the [examples/](../examples/) directory
 
 The power of GraphFlow comes from combining these simple concepts into sophisticated parallel workflows. Start simple and build up complexity as you get comfortable with the patterns!
